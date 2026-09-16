@@ -79,7 +79,7 @@ def evaluate_cluster(cluster_info: dict[str, Any]) -> list[Finding]:
 
 def evaluate_workloads(facts: WorkloadFacts) -> list[Finding]:
     findings: list[Finding] = []
-    hpa_targets = {h["target"] for h in facts.hpas}
+    hpa_by_target = {h["target"]: h for h in facts.hpas}
     multi_replica = [d for d in facts.deployments if (d.get("replicas") or 0) > 1]
 
     for d in facts.deployments:
@@ -103,18 +103,31 @@ def evaluate_workloads(facts: WorkloadFacts) -> list[Finding]:
             )
         )
 
+        hpa = hpa_by_target.get(name)
+        if hpa is None:
+            hpa_status, hpa_observed = WARNING, "no HPA"
+            hpa_remediation = "Add an HPA with sensible min/max replicas for the expected load."
+        elif hpa.get("min_replicas") == hpa.get("max_replicas"):
+            hpa_status = WARNING
+            hpa_observed = f"HPA pinned at {hpa.get('min_replicas')} (min == max)"
+            hpa_remediation = "Set maxReplicas above minReplicas so the HPA can actually scale out."
+        else:
+            hpa_status = PASS
+            hpa_observed = f"HPA {hpa.get('min_replicas')}-{hpa.get('max_replicas')} replicas"
+            hpa_remediation = "Keep min/max replicas sized for the expected load."
+
         findings.append(
             Finding(
                 id=f"k8s.deploy.{ns}.{name}.hpa",
                 category="capacity",
                 resource=f"deployment/{base}",
-                status=PASS if name in hpa_targets else WARNING,
-                description="Workload has a Horizontal Pod Autoscaler.",
-                desired="HPA targeting the workload",
-                observed="HPA present" if name in hpa_targets else "no HPA",
+                status=hpa_status,
+                description="Workload has a Horizontal Pod Autoscaler that can scale.",
+                desired="HPA targeting the workload with maxReplicas > minReplicas",
+                observed=hpa_observed,
                 severity=LOW,
-                remediation="Add an HPA with sensible min/max replicas for the expected load.",
-                evidence={"hpa_targets": sorted(hpa_targets)},
+                remediation=hpa_remediation,
+                evidence={"hpa": hpa},
             )
         )
 

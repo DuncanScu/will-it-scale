@@ -5,6 +5,9 @@ running (replica floors, resource limits, health probes, autoscaling, disruption
 budgets) against what *is* running, and produces findings for human review. It
 recommends changes; it never deploys them.
 
+> **Status:** experimental prototype. Validated end-to-end against a throwaway AKS
+> cluster and the `test_data/sample_service` fixture. Read-only by design.
+
 ## How it works
 
 Two layers keep the output trustworthy:
@@ -30,7 +33,9 @@ src/will_it_scale/
   interpret.py              # Foundry interpretation layer
   findings_store.py         # saves runs to findings/<cluster>/<timestamp>.json
   assess.py                 # runner: collect -> check -> (interpret) -> save
-findings/                   # saved assessment runs (JSON)
+findings/                   # saved assessment runs (JSON, git-ignored)
+test_data/sample_service/   # deliberately-flawed demo app used as a fixture
+tests/                      # pytest suite for the deterministic checks
 ```
 
 ## Prerequisites
@@ -89,6 +94,17 @@ Adds the Foundry-generated executive summary and prioritized risks:
 INTERPRET=1 uv run python -m will_it_scale.assess
 ```
 
+### Try it against the sample fixture
+
+`test_data/sample_service` is a deliberately-flawed order service (single replica,
+no CPU/memory limits, a pinned HPA, and no liveness probe). Deploy it to a cluster
+and assess that namespace to watch the checks fire:
+
+```shell
+kubectl apply -n demo -f test_data/sample_service/kubernetes/deployment.yaml
+TARGET_NAMESPACE=demo uv run python -m will_it_scale.assess
+```
+
 ## Output
 
 Each run prints a summary and writes a timestamped JSON file to
@@ -96,3 +112,12 @@ Each run prints a summary and writes a timestamped JSON file to
 (schema: `id`, `status`, `evidence`, `confidence`, `severity`, `remediation`), and
 the AI `interpretation` when enabled. Runs are diffed against the previous run to
 surface new regressions.
+
+## Testing
+
+Run the deterministic check suite. It needs no cluster or Azure access — the checks
+are exercised against constructed facts, so it is safe to run anywhere and in CI:
+
+```shell
+uv run pytest
+```
