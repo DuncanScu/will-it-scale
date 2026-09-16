@@ -1,28 +1,24 @@
-from azure.identity import DefaultAzureCredential
-from azure.ai.projects import AIProjectClient
+import asyncio
 
-endpoint = "https://will-it-scale-hack-resource.services.ai.azure.com/api/projects/will-it-scale-hack"
+from agent_framework import Agent
+from agent_framework.foundry import FoundryChatClient
+from azure.identity import DefaultAzureCredential
 
 
 def main() -> None:
-    project_client = AIProjectClient(
-        endpoint=endpoint,
-        credential=DefaultAzureCredential(),
+    asyncio.run(run_agent())
+
+
+async def run_agent() -> None:
+    agent = Agent(
+        client=FoundryChatClient(
+            project_endpoint="https://will-it-scale-hack-resource.services.ai.azure.com/api/projects/will-it-scale-hack",
+            model="claude-sonnet-4-6",
+            credential=DefaultAzureCredential(),
+        ),
+        name="HelloAgent",
+        instructions="You are a friendly assistant. Keep your answers brief.",
     )
 
-    my_agent = "investigation-architect"
-    my_version = "1"
-
-    openai_client = project_client.get_openai_client()
-
-    # Reference the agent to get a response
-    response = openai_client.responses.create(
-        input=[{"role": "user", "content": "Tell me what you can help with."}],
-        extra_body={"agent_reference": {"name": my_agent, "version": my_version, "type": "agent_reference"}},
-    )
-
-    print(f"Response output: {response.output_text}")
-
-
-if __name__ == "__main__":
-    main()
+    result = await agent.run("What is the largest city in France?")
+    print(f"Agent: {result}")
