@@ -173,6 +173,30 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                 [message.content for message in messages].count("First second."), 1
             )
 
+    async def test_assessment_title_waits_for_first_report_chunk(self) -> None:
+        first_chunk = asyncio.Event()
+
+        class DelayedService(FakeAssessmentService):
+            async def stream_report(self, requirements: str, on_status=None):
+                await first_chunk.wait()
+                async for chunk in super().stream_report(requirements, on_status):
+                    yield chunk
+
+        app = WillItScaleApp(service=DelayedService())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.click("#prompt")
+            await pilot.press(*"250 RPS", "enter")
+            await pilot.pause()
+
+            messages = list(app.query(ConversationMessage))
+            self.assertEqual(messages[-1].content, "")
+
+            first_chunk.set()
+            await self.wait_until_ready(app)
+            self.assertIn("Initial finding", messages[-1].content)
+
     async def test_slash_commands(self) -> None:
         app = WillItScaleApp(service=FakeAssessmentService())
 

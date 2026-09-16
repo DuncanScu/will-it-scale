@@ -388,18 +388,18 @@ class WillItScaleApp(App[None]):
     async def run_report(self, requirements: str) -> None:
         self._started_at = monotonic()
         self._set_busy(True, "Preparing the assessment")
-        response = await self._add_message("Assistant", "# Assessment\n\n")
+        response = await self._add_message("Assistant", "")
         content = ""
         try:
             async for chunk in self.service.stream_report(
                 requirements, self._set_status
             ):
                 content += chunk
-                await response.set_content(f"# Assessment\n\n{content}")
+                await response.set_content(content)
                 self.call_after_refresh(self._scroll_to_end)
         except asyncio.CancelledError:
             if not content:
-                await response.set_content("# Assessment\n\n*Assessment cancelled.*")
+                await response.set_content("*Assessment cancelled.*")
             self._set_busy(False, "Waiting for requirements")
             raise
         except Exception as error:
