@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 
 from textual.drivers.headless_driver import HeadlessDriver
 
-from will_it_scale.tui import ConversationMessage, WillItScaleApp
+from will_it_scale.tui import BlenderIntro, ConversationMessage, WillItScaleApp
 
 
 class FakeAssessmentService:
@@ -24,6 +24,63 @@ class FakeAssessmentService:
 
 
 class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
+    async def test_blender_intro_animates_and_reveals_report(self) -> None:
+        for size in ((32, 16), (60, 20), (120, 40)):
+            with self.subTest(size=size):
+                app = WillItScaleApp(service=FakeAssessmentService())
+                async with app.run_test(size=size) as pilot:
+                    await self.wait_until_ready(app)
+                    intro = app.query_one(BlenderIntro)
+                    intro.animation_timer.pause()
+                    self.assertTrue(intro.display)
+                    self.assertFalse(app.query_one("#shell").display)
+                    self.assertEqual(app.screen.region, intro.region)
+                    for selector in ("#brand", "#transcript", "#prompt", "#status", "#hint"):
+                        self.assertEqual(app.query_one(selector).region.height, 0, selector)
+                    first_frame = intro.render().plain
+                    self.assertIn("|_________|", first_frame)
+                    self.assertEqual(len(first_frame.splitlines()), intro.size.height)
+                    self.assertTrue(all(len(line) == intro.size.width for line in first_frame.splitlines()))
+                    intro.advance()
+                    self.assertNotEqual(first_frame, intro.render().plain)
+                    intro.frame = intro.FRAME_COUNT - 1
+                    intro.advance()
+                    await pilot.pause()
+                    self.assertFalse(intro.display)
+                    self.assertTrue(app.query_one("#shell").display)
+                    self.assertIs(app.focused, app.query_one("#prompt"))
+                    self.assertIn("Initial finding", app.query_one(ConversationMessage).content)
+
+    async def test_splash_automatically_reveals_tui(self) -> None:
+        with patch.object(BlenderIntro, "FRAME_COUNT", 3):
+            app = WillItScaleApp(service=FakeAssessmentService())
+            async with app.run_test(size=(60, 20)) as pilot:
+                await pilot.pause(0.4)
+                self.assertFalse(app.query_one(BlenderIntro).display)
+                self.assertTrue(app.query_one("#shell").display)
+                self.assertIs(app.focused, app.query_one("#prompt"))
+
+    async def test_escape_skips_intro_without_cancelling_investigation(self) -> None:
+        started = asyncio.Event()
+        finish = asyncio.Event()
+
+        class SlowService(FakeAssessmentService):
+            async def investigate(self, on_status=None) -> str:
+                started.set()
+                await finish.wait()
+                return "- Initial finding"
+
+        app = WillItScaleApp(service=SlowService())
+        async with app.run_test(size=(60, 20)) as pilot:
+            await asyncio.wait_for(started.wait(), timeout=5)
+            await pilot.press("escape")
+            self.assertFalse(app.query_one(BlenderIntro).display)
+            self.assertTrue(app.query_one("#shell").display)
+            self.assertTrue(app._busy)
+            finish.set()
+            await self.wait_until_ready(app)
+            self.assertTrue(app._conversation_ready)
+
     async def test_inline_investigation_has_visible_layout(self) -> None:
         for size in ((60, 20), (120, 40)):
             with self.subTest(size=size):
@@ -38,6 +95,9 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                         await pilot.pause()
                         await self.wait_until_ready(app)
                         self.assertTrue(app.is_inline)
+                        self.assertEqual(app.query_one(BlenderIntro).region, app.screen.content_region)
+                        self.assertFalse(app.query_one("#shell").display)
+                        await pilot.press("escape")
                         for selector in ("#brand", "#prompt", "#status", "#hint"):
                             region = app.query_one(selector).region
                             self.assertGreater(region.width, 0, selector)
@@ -88,6 +148,7 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
             messages = list(app.query(ConversationMessage))
             self.assertIn("Initial finding", messages[0].content)
 
+            await pilot.press("escape")
             await pilot.click("#prompt")
             await pilot.press(*"What next?", "enter")
             await self.wait_until_ready(app)
@@ -104,6 +165,7 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
 
         async with app.run_test(size=(100, 30)) as pilot:
             await self.wait_until_ready(app)
+            await pilot.press("escape")
             await pilot.click("#prompt")
             await pilot.press(*"/help", "enter")
             await pilot.pause()
@@ -133,6 +195,7 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
             await self.wait_until_ready(app)
             self.assertFalse(app._conversation_ready)
 
+            await pilot.press("escape")
             await pilot.click("#prompt")
             await pilot.press(*"/retry", "enter")
             await self.wait_until_ready(app)

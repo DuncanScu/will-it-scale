@@ -1,6 +1,7 @@
 import asyncio
 from time import monotonic
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -8,6 +9,103 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Label, LoadingIndicator, Markdown, Static
 
 from will_it_scale.assessment import AssessmentService
+
+
+class BlenderIntro(Static):
+    FRAME_COUNT = 48
+    RESOURCES = ("[POD]", "<SVC>", "{DEPLOY}", "[NODE]", "<INGRESS>", "{HPA}", "[PVC]", "{CONFIG}")
+    COLORS = ("#65b5ff", "#72c4ba", "#f0a45d")
+
+    def __init__(self) -> None:
+        super().__init__(id="blender-intro")
+        self.frame = 0
+
+    def on_mount(self) -> None:
+        self.animation_timer = self.set_interval(0.08, self.advance)
+
+    def advance(self) -> None:
+        self.frame += 1
+        if self.frame >= self.FRAME_COUNT:
+            self.finish()
+        else:
+            self.refresh()
+
+    def finish(self) -> None:
+        if not self.display:
+            return
+        self.animation_timer.stop()
+        self.display = False
+        self.app.query_one("#shell").remove_class("hidden")
+        transcript = self.app.query_one("#transcript", VerticalScroll)
+        self.call_after_refresh(transcript.scroll_end, animate=False)
+        prompt = self.app.query_one("#prompt", Input)
+        if not prompt.disabled:
+            self.call_after_refresh(prompt.focus)
+
+    def render(self) -> Text:
+        width = max(1, self.size.width)
+        height = max(1, self.size.height)
+        canvas = [[" " for _ in range(width)] for _ in range(height)]
+        styles = [["" for _ in range(width)] for _ in range(height)]
+
+        def draw(column: int, row: int, text: str, style: str) -> None:
+            if 0 <= row < height:
+                for offset, character in enumerate(text):
+                    if 0 <= column + offset < width:
+                        canvas[row][column + offset] = character
+                        styles[row][column + offset] = style
+
+        center = width // 2
+        blender = (
+            "   .-----------.   ",
+            "   |           |==.",
+            "   |           |  |",
+            "    \\         /===\u0027",
+            "     \\_______/     ",
+            "     /=======\\     ",
+            "    |   (O)   |    ",
+            "    |_________|    ",
+        )
+        compact = height < 11
+        if compact:
+            blender = (
+                "   |           |==.",
+                "   |           |__|",
+                "    \\_________/    ",
+                "    |   (O)   |    ",
+                "    |_________|    ",
+            )
+        fall_height = max(1, min(8, height - len(blender)))
+        top = max(0, (height - fall_height - len(blender)) // 2)
+        for row, line in enumerate(blender):
+            draw(center - 9, top + fall_height + row, line, "bold #b9b3a9")
+
+        lanes = (0,) if width < 50 else (-1, 0, 1)
+        for index, lane in enumerate(lanes):
+            tick = self.frame + index * 5
+            progress = (tick % 16) / 16
+            spread = min(23, max(0, (width - 10) // 2))
+            column = center + round(lane * spread * (1 - progress))
+            row = top + int(progress * (fall_height + 2))
+            resource = self.RESOURCES[(tick // 16 + index * 3) % len(self.RESOURCES)]
+            if progress > 0.55 or row >= top + fall_height:
+                resource = ("+", "*", "o")[index % 3]
+            draw(column - len(resource) // 2, row, resource, self.COLORS[index % 3])
+
+        swirl = ("~ * + ~", "+ ~ * +", "* + ~ *", "~ + * ~")[self.frame % 4]
+        draw(center - 3, top + fall_height + (1 if compact else 2), swirl, "bold #65b5ff")
+        blade = ("- + -", "\\ | /", "--*--", "/ | \\")[self.frame % 4]
+        if not compact:
+            draw(center - 2, top + fall_height + 3, blade, "bold #72c4ba")
+        draw(center, top + fall_height + (3 if compact else 6), "o" if self.frame % 2 else "O", "bold #f0a45d")
+
+        output = Text(no_wrap=True, overflow="crop")
+        for row in range(height):
+            for column in range(width):
+                output.append(canvas[row][column], style=styles[row][column])
+            if row < height - 1:
+                output.append("\n")
+        return output
 
 
 class ConversationMessage(Vertical):
@@ -56,6 +154,11 @@ class WillItScaleApp(App[None]):
         padding: 0 1;
         scrollbar-color: #65615a;
         scrollbar-background: #242321;
+    }
+
+    #blender-intro {
+        height: 1fr;
+        overflow: hidden;
     }
 
     .message {
@@ -173,7 +276,8 @@ class WillItScaleApp(App[None]):
         self._conversation_ready = False
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="shell"):
+        yield BlenderIntro()
+        with Vertical(id="shell", classes="hidden"):
             yield Static("◆ WILL IT SCALE?", id="brand")
             yield VerticalScroll(id="transcript")
             with Horizontal(id="activity"):
@@ -250,6 +354,7 @@ class WillItScaleApp(App[None]):
         if not message or self._busy:
             return
 
+        self.query_one(BlenderIntro).finish()
         command = message.lower()
         if command in {"exit", "quit", "/exit", "/quit"}:
             self.exit()
@@ -306,6 +411,10 @@ class WillItScaleApp(App[None]):
         await transcript.remove_children()
 
     def action_cancel(self) -> None:
+        intro = self.query_one(BlenderIntro)
+        if intro.display:
+            intro.finish()
+            return
         workers = self.workers
         if self._busy:
             workers.cancel_group(self, "agent")
