@@ -7,7 +7,7 @@ def create_kubernetes_investigator_agent() -> Agent:
     return Agent(
         client=FoundryChatClient(
             project_endpoint="https://will-it-scale-hack-resource.services.ai.azure.com/api/projects/will-it-scale-hack",
-            model="claude-sonnet-4-6",
+            model="gpt-4.1-mini",
             credential=DefaultAzureCredential(),
         ),
         name="KubernetesInvestigator",
