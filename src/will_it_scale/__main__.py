@@ -57,11 +57,15 @@ def configure_logging(*, debug: bool) -> None:
 async def run_step(label: str, operation: Awaitable[T]) -> T:
     started_at = monotonic()
     LOGGER.info("%s started", label)
+    debug_enabled = LOGGER.isEnabledFor(logging.DEBUG)
+    heartbeat_interval = 10 if debug_enabled else 30
+    heartbeat_level = logging.DEBUG if debug_enabled else logging.INFO
 
     async def log_heartbeat() -> None:
         while True:
-            await asyncio.sleep(10)
-            LOGGER.debug(
+            await asyncio.sleep(heartbeat_interval)
+            LOGGER.log(
+                heartbeat_level,
                 "%s is still running (%.0fs elapsed)", label, monotonic() - started_at
             )
 
@@ -81,6 +85,7 @@ async def run_step(label: str, operation: Awaitable[T]) -> T:
 
 
 async def run_agent() -> None:
+    console = Console()
     LOGGER.debug("Reading Kubernetes manifest from %s", FIXTURE_MANIFEST)
     kubernetes_investigator = create_kubernetes_investigator_agent()
     manifest = FIXTURE_MANIFEST.read_text(encoding="utf-8")
@@ -103,24 +108,45 @@ async def run_agent() -> None:
 
     LOGGER.debug("Creating Investigation Architect agent")
     architect = create_investigation_architect_agent()
+    session = architect.create_session()
     review = await run_step(
         "Architecture review",
         architect.run(
             """
             Review the Kubernetes investigator's findings below for the order service assessment.
             The primary concern is whether the service can support 100 requests per second. Identify
-            confirmed concerns, handled concerns, new risks, unknowns, contradictions, and the next
-            validation steps. Explain which conclusions are supported by the investigator's evidence.
+            only the most important confirmed concerns, unknowns, and next validation steps. Return
+            a small user-facing report with no more than eight concise bullets. Explain which
+            conclusions are supported by the investigator's evidence.
 
             Kubernetes investigator findings:
             """
-            + str(investigation)
+            + investigation.text,
+            session=session,
         ),
     )
 
     LOGGER.debug("Rendering final report")
-    console = Console()
-    console.print(Markdown(f"# Investigation Architect\n\n{review}"))
+    console.print(Markdown(f"# Assessment\n\n{review.text}"))
+    console.print("\nAsk a follow-up question, or type [bold]exit[/] to finish.")
+
+    while True:
+        try:
+            user_message = console.input("\n[bold cyan]You>[/] ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print()
+            break
+
+        if not user_message:
+            continue
+        if user_message.lower() in {"exit", "quit"}:
+            break
+
+        response = await run_step(
+            "Follow-up",
+            architect.run(user_message, session=session),
+        )
+        console.print(Markdown(response.text))
 
 
 if __name__ == "__main__":
