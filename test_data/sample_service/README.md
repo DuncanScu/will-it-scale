@@ -1,6 +1,7 @@
 # Sample Service Investigation Fixture
 
-This fixture represents an order service that must support a peak workload of 100 requests per second.
+This fixture represents an order service. Its target workload and reliability goals are
+provided interactively when an assessment runs.
 
 Primary concern: the database may become a bottleneck under peak traffic.
 

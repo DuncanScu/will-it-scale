@@ -16,9 +16,9 @@ Run the CLI:
 uv run will-it-scale
 ```
 
-The inline terminal UI runs the initial investigation, prints a short assessment,
-and then accepts follow-up questions in the same conversation. Responses stream into
-the transcript as they arrive.
+The inline terminal UI first asks for the workload and reliability targets to assess,
+then investigates the available configuration against those requirements. It streams a
+short assessment and accepts follow-up questions in the same conversation.
 
 Commands and controls:
 

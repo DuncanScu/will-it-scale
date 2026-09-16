@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, PropertyMock, patch
+from unittest.mock import PropertyMock, patch
 
 from textual.drivers.headless_driver import HeadlessDriver
 
@@ -9,12 +9,16 @@ from will_it_scale.tui import BlenderIntro, ConversationMessage, WillItScaleApp
 
 class FakeAssessmentService:
     def __init__(self) -> None:
+        self.requirements: list[str] = []
         self.follow_ups: list[str] = []
 
-    async def investigate(self, on_status=None) -> str:
+    async def stream_report(self, requirements: str, on_status=None):
+        self.requirements.append(requirements)
         if on_status is not None:
             on_status("Preparing the assessment")
-        return "- Initial finding"
+        yield "- Initial "
+        await asyncio.sleep(0)
+        yield "finding"
 
     async def stream_follow_up(self, message: str):
         self.follow_ups.append(message)
@@ -24,6 +28,23 @@ class FakeAssessmentService:
 
 
 class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_prompt_waits_before_investigation(self) -> None:
+        service = FakeAssessmentService()
+        app = WillItScaleApp(service=service)
+
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            self.assertEqual(service.requirements, [])
+            self.assertIn(
+                "Before I investigate", app.query_one(ConversationMessage).content
+            )
+            await pilot.press("escape")
+            await pilot.click("#prompt")
+            await pilot.press(*"250 RPS with 99.9% availability", "enter")
+            await self.wait_until_ready(app)
+
+        self.assertEqual(service.requirements, ["250 RPS with 99.9% availability"])
+
     async def test_blender_intro_animates_and_reveals_report(self) -> None:
         for size in ((32, 16), (60, 20), (120, 40)):
             with self.subTest(size=size):
@@ -33,10 +54,6 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                     intro = app.query_one(BlenderIntro)
                     intro.animation_timer.pause()
                     self.assertTrue(intro.display)
-                    self.assertFalse(app.query_one("#shell").display)
-                    self.assertEqual(app.screen.region, intro.region)
-                    for selector in ("#brand", "#transcript", "#prompt", "#status", "#hint"):
-                        self.assertEqual(app.query_one(selector).region.height, 0, selector)
                     first_frame = intro.render().plain
                     self.assertIn("|_________|", first_frame)
                     self.assertEqual(len(first_frame.splitlines()), intro.size.height)
@@ -49,7 +66,6 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(intro.display)
                     self.assertTrue(app.query_one("#shell").display)
                     self.assertIs(app.focused, app.query_one("#prompt"))
-                    self.assertIn("Initial finding", app.query_one(ConversationMessage).content)
 
     async def test_splash_automatically_reveals_tui(self) -> None:
         with patch.object(BlenderIntro, "FRAME_COUNT", 3):
@@ -60,43 +76,42 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(app.query_one("#shell").display)
                 self.assertIs(app.focused, app.query_one("#prompt"))
 
-    async def test_escape_skips_intro_without_cancelling_investigation(self) -> None:
+    async def test_investigation_starts_only_after_requirements(self) -> None:
         started = asyncio.Event()
-        finish = asyncio.Event()
 
         class SlowService(FakeAssessmentService):
-            async def investigate(self, on_status=None) -> str:
+            async def stream_report(self, requirements: str, on_status=None):
                 started.set()
-                await finish.wait()
-                return "- Initial finding"
+                async for chunk in super().stream_report(requirements, on_status):
+                    yield chunk
 
         app = WillItScaleApp(service=SlowService())
         async with app.run_test(size=(60, 20)) as pilot:
-            await asyncio.wait_for(started.wait(), timeout=5)
+            await self.wait_until_ready(app)
+            self.assertFalse(started.is_set())
             await pilot.press("escape")
-            self.assertFalse(app.query_one(BlenderIntro).display)
-            self.assertTrue(app.query_one("#shell").display)
-            self.assertTrue(app._busy)
-            finish.set()
+            await pilot.click("#prompt")
+            await pilot.press(*"250 RPS", "enter")
+            await asyncio.wait_for(started.wait(), timeout=5)
             await self.wait_until_ready(app)
             self.assertTrue(app._conversation_ready)
 
     async def test_inline_investigation_has_visible_layout(self) -> None:
         for size in ((60, 20), (120, 40)):
             with self.subTest(size=size):
-                service = AsyncMock()
-                service.investigate.return_value = "- Initial finding"
+                service = FakeAssessmentService()
                 app = WillItScaleApp(service=service)
                 with patch.object(
                     HeadlessDriver, "is_inline", new_callable=PropertyMock,
                     return_value=True,
                 ):
                     async with app.run_test(size=size) as pilot:
-                        await pilot.pause()
                         await self.wait_until_ready(app)
                         self.assertTrue(app.is_inline)
-                        self.assertEqual(app.query_one(BlenderIntro).region, app.screen.content_region)
-                        self.assertFalse(app.query_one("#shell").display)
+                        self.assertEqual(
+                            app.query_one(BlenderIntro).region,
+                            app.screen.content_region,
+                        )
                         await pilot.press("escape")
                         for selector in ("#brand", "#prompt", "#status", "#hint"):
                             region = app.query_one(selector).region
@@ -105,19 +120,11 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                             self.assertTrue(
                                 app.screen.region.contains_region(region), selector
                             )
-                        service.investigate.assert_awaited_once()
+                        self.assertEqual(service.requirements, [])
 
-    async def test_initial_investigation_starts_after_first_render(self) -> None:
+    async def test_requirements_prompt_is_shown_after_first_render(self) -> None:
         events: list[str] = []
-        started = asyncio.Event()
-
-        class RenderCheckingService(FakeAssessmentService):
-            async def investigate(self, on_status=None) -> str:
-                events.append("investigate")
-                started.set()
-                return await super().investigate(on_status)
-
-        app = WillItScaleApp(service=RenderCheckingService())
+        app = WillItScaleApp(service=FakeAssessmentService())
         display = app._display
 
         def record_display(screen, renderable) -> None:
@@ -126,11 +133,10 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(app, "_display", side_effect=record_display):
             async with app.run_test(size=(100, 30)):
-                await asyncio.wait_for(started.wait(), timeout=5)
                 await self.wait_until_ready(app)
+                events.append("requirements")
 
-        self.assertLess(events.index("render"), events.index("investigate"))
-        self.assertEqual(events.count("investigate"), 1)
+        self.assertLess(events.index("render"), events.index("requirements"))
 
     async def wait_until_ready(self, app: WillItScaleApp) -> None:
         for _ in range(100):
@@ -145,11 +151,18 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
 
         async with app.run_test(size=(100, 30)) as pilot:
             await self.wait_until_ready(app)
-            messages = list(app.query(ConversationMessage))
-            self.assertIn("Initial finding", messages[0].content)
-
             await pilot.press("escape")
             await pilot.click("#prompt")
+            await pilot.press(*"250 RPS with 99.9% availability", "enter")
+            await self.wait_until_ready(app)
+
+            messages = list(app.query(ConversationMessage))
+            self.assertEqual(
+                service.requirements, ["250 RPS with 99.9% availability"]
+            )
+            self.assertIn("Initial finding", messages[-1].content)
+            self.assertTrue(app._conversation_ready)
+
             await pilot.press(*"What next?", "enter")
             await self.wait_until_ready(app)
 
@@ -182,22 +195,26 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                 super().__init__()
                 self.attempts = 0
 
-            async def investigate(self, on_status=None) -> str:
+            async def stream_report(self, requirements: str, on_status=None):
                 self.attempts += 1
                 if self.attempts == 1:
                     raise RuntimeError("temporary failure")
-                return await super().investigate(on_status)
+                async for chunk in super().stream_report(requirements, on_status):
+                    yield chunk
 
         service = FailsOnceService()
         app = WillItScaleApp(service=service)
 
         async with app.run_test(size=(100, 30)) as pilot:
             await self.wait_until_ready(app)
-            self.assertFalse(app._conversation_ready)
-
             await pilot.press("escape")
             await pilot.click("#prompt")
-            await pilot.press(*"/retry", "enter")
+            await pilot.press(*"250 RPS", "enter")
+            await self.wait_until_ready(app)
+            self.assertFalse(app._conversation_ready)
+
+            await pilot.click("#prompt")
+            await pilot.press(*"250 RPS", "enter")
             await self.wait_until_ready(app)
 
             self.assertEqual(service.attempts, 2)

@@ -15,6 +15,12 @@ DEFAULT_MANIFEST = (
     / "test_data/sample_service/kubernetes/deployment.yaml"
 )
 StatusCallback = Callable[[str], None]
+REQUIREMENTS_PROMPT = """Before I investigate, what should this service support?
+
+Please include:
+- Target throughput, such as requests or transactions per second
+- Latency and availability objectives
+- Expected traffic pattern, including bursts or growth"""
 
 
 class AssessmentService:
@@ -34,7 +40,11 @@ class AssessmentService:
         self._architect: Agent | None = None
         self._session = None
 
-    async def investigate(self, on_status: StatusCallback | None = None) -> str:
+    async def stream_report(
+        self,
+        requirements: str,
+        on_status: StatusCallback | None = None,
+    ) -> AsyncIterator[str]:
         self._set_status(on_status, "Reading Kubernetes configuration")
         manifest = self.manifest_path.read_text(encoding="utf-8")
 
@@ -42,10 +52,16 @@ class AssessmentService:
         investigator = self._kubernetes_agent_factory()
         investigation = await investigator.run(
             """
-            Investigate the Kubernetes configuration below for an order service that must support
-            100 requests per second. Return concise, evidence-backed findings for the Investigation
+            Investigate the Kubernetes configuration against the user's workload and reliability
+            requirements below. Return concise, evidence-backed findings for the Investigation
             Architect. Identify scaling, scheduling, and availability risks, cite the relevant
-            manifest fields, and call out any unknowns.
+            manifest fields, and call out any unknowns. Do not claim that configuration alone
+            proves the service can handle the requested workload.
+
+            User requirements:
+            """
+            + requirements
+            + """
 
             Kubernetes manifest:
             """
@@ -55,20 +71,26 @@ class AssessmentService:
         self._set_status(on_status, "Preparing the assessment")
         self._architect = self._architect_agent_factory()
         self._session = self._architect.create_session()
-        review = await self._architect.run(
+        async for update in self._architect.run(
             """
-            Review the Kubernetes investigator's findings below for the order service assessment.
-            The primary concern is whether the service can support 100 requests per second. Identify
-            only the most important confirmed concerns, unknowns, and next validation steps. Return
-            a small user-facing report with no more than eight concise bullets. Explain which
-            conclusions are supported by the investigator's evidence.
+            Compare the Kubernetes investigator's findings with the user's workload and reliability
+            requirements below. Identify only the most important confirmed concerns, unknowns, and
+            next validation steps. Return a small user-facing report with no more than eight concise
+            bullets. Clearly distinguish evidence-backed conclusions from unknowns.
+
+            User requirements:
+            """
+            + requirements
+            + """
 
             Kubernetes investigator findings:
             """
             + investigation.text,
+            stream=True,
             session=self._session,
-        )
-        return review.text
+        ):
+            if update.text:
+                yield update.text
 
     async def stream_follow_up(self, message: str) -> AsyncIterator[str]:
         if self._architect is None or self._session is None:

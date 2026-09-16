@@ -8,7 +8,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Label, LoadingIndicator, Markdown, Static
 
-from will_it_scale.assessment import AssessmentService
+from will_it_scale.assessment import AssessmentService, REQUIREMENTS_PROMPT
 
 
 class BlenderIntro(Static):
@@ -270,9 +270,10 @@ class WillItScaleApp(App[None]):
         super().__init__()
         self.service = service or AssessmentService()
         self._started_at = monotonic()
-        self._status_text = "Starting investigation"
+        self._status_text = "Waiting for requirements"
         self._message_number = 0
         self._busy = False
+        self._awaiting_requirements = False
         self._conversation_ready = False
 
     def compose(self) -> ComposeResult:
@@ -294,8 +295,8 @@ class WillItScaleApp(App[None]):
 
     def on_mount(self) -> None:
         self.set_interval(1, self._refresh_status)
-        self._set_busy(True, "Starting investigation")
-        self.call_after_refresh(self.run_initial_assessment)
+        self._set_busy(True, "Preparing questions")
+        self.call_after_refresh(self.request_requirements)
 
     def _refresh_status(self) -> None:
         if self._busy:
@@ -332,21 +333,16 @@ class WillItScaleApp(App[None]):
         self.query_one("#transcript", VerticalScroll).scroll_end(animate=False)
 
     @work(exclusive=True, group="agent")
-    async def run_initial_assessment(self) -> None:
+    async def request_requirements(self) -> None:
         self._started_at = monotonic()
-        self._set_busy(True, "Starting investigation")
-        try:
-            report = await self.service.investigate(self._set_status)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            await self._add_message("System", f"Investigation failed: `{error}`")
-            self._set_busy(False, "Investigation failed · use /retry")
-            return
-
-        await self._add_message("Assistant", f"# Assessment\n\n{report}")
-        self._conversation_ready = True
-        self._set_busy(False)
+        self._awaiting_requirements = False
+        self._conversation_ready = False
+        await self._add_message("Assistant", REQUIREMENTS_PROMPT)
+        self._awaiting_requirements = True
+        self.query_one("#prompt", Input).placeholder = (
+            "Describe the target workload and reliability goals..."
+        )
+        self._set_busy(False, "Waiting for requirements")
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         message = event.value.strip()
@@ -360,8 +356,8 @@ class WillItScaleApp(App[None]):
             self.exit()
             return
         if command == "/retry":
-            if not self._conversation_ready:
-                self.run_initial_assessment()
+            if not self._conversation_ready and not self._awaiting_requirements:
+                self.request_requirements()
             return
         if command == "/clear":
             await self.action_clear()
@@ -374,6 +370,10 @@ class WillItScaleApp(App[None]):
                 "active response.",
             )
             return
+        if self._awaiting_requirements:
+            await self._add_message("You", message)
+            self.run_report(message)
+            return
         if not self._conversation_ready:
             await self._add_message(
                 "System",
@@ -383,6 +383,34 @@ class WillItScaleApp(App[None]):
 
         await self._add_message("You", message)
         self.run_follow_up(message)
+
+    @work(exclusive=True, group="agent")
+    async def run_report(self, requirements: str) -> None:
+        self._started_at = monotonic()
+        self._set_busy(True, "Preparing the assessment")
+        response = await self._add_message("Assistant", "# Assessment\n\n")
+        content = ""
+        try:
+            async for chunk in self.service.stream_report(
+                requirements, self._set_status
+            ):
+                content += chunk
+                await response.set_content(f"# Assessment\n\n{content}")
+                self.call_after_refresh(self._scroll_to_end)
+        except asyncio.CancelledError:
+            if not content:
+                await response.set_content("# Assessment\n\n*Assessment cancelled.*")
+            self._set_busy(False, "Waiting for requirements")
+            raise
+        except Exception as error:
+            await response.set_content(f"Assessment failed: `{error}`")
+            self._set_busy(False, "Assessment failed · answer again")
+            return
+
+        self._awaiting_requirements = False
+        self._conversation_ready = True
+        self.query_one("#prompt", Input).placeholder = "Ask about the assessment..."
+        self._set_busy(False)
 
     @work(exclusive=True, group="agent")
     async def run_follow_up(self, message: str) -> None:
