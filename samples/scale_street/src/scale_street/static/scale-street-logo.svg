@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title description">
+  <title id="title">Scale Street market mixer</title>
+  <desc id="description">A playful laboratory blender mixing market charts and rumor signals.</desc>
+  <defs>
+    <linearGradient id="background" x1="20" y1="16" x2="198" y2="206" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#173e51"/>
+      <stop offset="1" stop-color="#07141f"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="68" y1="42" x2="142" y2="139" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#dffdf7" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#5ce1c2" stop-opacity=".08"/>
+    </linearGradient>
+    <linearGradient id="liquid" x1="58" y1="86" x2="153" y2="137" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5ce1c2" stop-opacity=".76"/>
+      <stop offset="1" stop-color="#42a9e8" stop-opacity=".5"/>
+    </linearGradient>
+    <linearGradient id="base" x1="52" y1="144" x2="168" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffcd70"/>
+      <stop offset="1" stop-color="#ff7f73"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#02080d" flood-opacity=".5"/>
+    </filter>
+    <clipPath id="jar-clip">
+      <path d="M60 43h91l-10 94H70L60 43Z"/>
+    </clipPath>
+    <style>
+      .rumor-a { animation: float-a 3.2s ease-in-out infinite; transform-origin: center; }
+      .rumor-b { animation: float-b 2.8s ease-in-out infinite; transform-origin: center; }
+      .chart { animation: chart-bob 2.4s ease-in-out infinite; transform-origin: center; }
+      .blade { animation: spin 1.15s linear infinite; transform-origin: 105px 126px; }
+      .spark { animation: blink 1.8s ease-in-out infinite alternate; }
+      .spark.delay { animation-delay: .7s; }
+      @keyframes float-a {
+        50% { transform: translate(7px, 9px) rotate(8deg); }
+      }
+      @keyframes float-b {
+        50% { transform: translate(-8px, -6px) rotate(-7deg); }
+      }
+      @keyframes chart-bob {
+        50% { transform: translateY(-7px) rotate(4deg); }
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes blink {
+        50% { opacity: .25; transform: scale(.8); }
+      }
+    </style>
+  </defs>
+
+  <rect x="8" y="8" width="204" height="204" rx="52" fill="url(#background)"/>
+  <path d="M25 73C37 42 62 23 94 19" fill="none" stroke="#5ce1c2" stroke-linecap="round" stroke-width="5" opacity=".32"/>
+  <path d="M194 151c-9 25-28 42-54 50" fill="none" stroke="#ff9877" stroke-linecap="round" stroke-width="5" opacity=".35"/>
+
+  <g class="spark" fill="#ffcd70">
+    <path d="m43 48 3 8 8 3-8 3-3 8-3-8-8-3 8-3 3-8Z"/>
+    <circle cx="174" cy="47" r="4"/>
+  </g>
+  <g class="spark delay" fill="#5ce1c2">
+    <path d="m179 82 2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6Z"/>
+    <circle cx="38" cy="111" r="3"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M151 60h10c13 0 23 11 22 24l-2 23c-1 11-10 19-21 19h-13" fill="none" stroke="#b7dce4" stroke-width="8"/>
+    <path d="M60 43h91l-10 94H70L60 43Z" fill="url(#glass)" stroke="#dffdf7" stroke-linejoin="round" stroke-width="5"/>
+    <path d="M58 45h95" stroke="#dffdf7" stroke-linecap="round" stroke-width="8"/>
+    <path d="M75 30h61l10 13H65l10-13Z" fill="#ff7f73" stroke="#ffd08a" stroke-linejoin="round" stroke-width="4"/>
+    <path d="M83 24h45" stroke="#ffd08a" stroke-linecap="round" stroke-width="7"/>
+
+    <g clip-path="url(#jar-clip)">
+      <path d="M55 91c19-13 31 11 51-1 19-12 31 10 48 0v52H55V91Z" fill="url(#liquid)"/>
+      <path d="M57 91c18-13 30 11 49-1 19-12 31 10 47 0" fill="none" stroke="#b5fff0" stroke-linecap="round" stroke-width="3" opacity=".72"/>
+
+      <g class="rumor-a">
+        <path d="M71 67h31a7 7 0 0 1 7 7v10a7 7 0 0 1-7 7H87l-8 7 1-7h-9a7 7 0 0 1-7-7V74a7 7 0 0 1 7-7Z" fill="#ffcd70"/>
+        <circle cx="78" cy="79" r="2.5" fill="#8b4b40"/>
+        <circle cx="87" cy="79" r="2.5" fill="#8b4b40"/>
+        <circle cx="96" cy="79" r="2.5" fill="#8b4b40"/>
+      </g>
+
+      <g class="rumor-b">
+        <path d="M116 51h26a6 6 0 0 1 6 6v9a6 6 0 0 1-6 6h-7l1 7-8-7h-12a6 6 0 0 1-6-6v-9a6 6 0 0 1 6-6Z" fill="#ff7f73"/>
+        <path d="M119 61h19" stroke="#713b3d" stroke-linecap="round" stroke-width="3"/>
+      </g>
+
+      <g class="chart">
+        <path d="M83 119V104M98 119V94M113 119v-18M128 119V83" stroke="#07141f" stroke-linecap="round" stroke-width="6"/>
+        <path d="m79 106 18-14 16 8 19-21" fill="none" stroke="#f4f7f8" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+        <path d="m124 79 9-1-2 9" fill="none" stroke="#f4f7f8" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+      </g>
+
+      <g class="blade" fill="#eafffa">
+        <path d="M104 123c-17-12-28-6-33 2 13 8 24 9 34 4l-1-6Z"/>
+        <path d="M107 123c17-12 28-6 33 2-13 8-24 9-34 4l1-6Z"/>
+      </g>
+      <circle cx="105" cy="126" r="6" fill="#ffcd70"/>
+    </g>
+
+    <path d="M67 139h77l18 20H49l18-20Z" fill="#cce9eb" stroke="#efffff" stroke-linejoin="round" stroke-width="4"/>
+    <path d="M48 159h115l7 31H41l7-31Z" fill="url(#base)" stroke="#ffd9aa" stroke-linejoin="round" stroke-width="4"/>
+    <rect x="55" y="168" width="65" height="10" rx="5" fill="#7a4543" opacity=".66"/>
+    <circle cx="145" cy="174" r="9" fill="#102533" stroke="#fff2d6" stroke-width="3"/>
+    <circle cx="145" cy="174" r="3" fill="#5ce1c2"/>
+  </g>
+</svg>

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scale-street
+  labels:
+    app.kubernetes.io/name: scale-street
+  annotations:
+    demo.scalestreet.io/intentional-findings: >-
+      single-replica,no-hpa,in-process-state,synchronous-foundry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scale-street
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scale-street
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: scale-street
+      containers:
+        - name: scale-street
+          image: SCALE_STREET_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: SCALE_STREET_AGENT_MODE
+              value: foundry
+            - name: SCALE_STREET_SCALE_PROFILE
+              value: constrained
+            - name: FOUNDRY_PROJECT_ENDPOINT
+              value: FOUNDRY_PROJECT_ENDPOINT_VALUE
+            - name: FOUNDRY_MODEL
+              value: gpt-5-mini
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 384Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scale-street
+  annotations:
+    azure.workload.identity/client-id: WORKLOAD_IDENTITY_CLIENT_ID
