@@ -158,6 +158,8 @@ The launcher also prevents quiet hangs:
 
 - It stops the run after five minutes without Copilot process I/O.
 - It stops the run after 30 minutes of total execution time.
+- Small heartbeat writes do not reset the idle timer; at least 4 KiB of
+  additional Copilot I/O is required to count as meaningful activity.
 - It terminates the Copilot process group, including Azure MCP children.
 - It writes the timeout reason and partial output to a `_failed.md` report.
 
@@ -167,12 +169,14 @@ Override these limits when a deliberately long assessment requires it:
 will-it-scale-azure \
   --idle-timeout 600 \
   --max-runtime 3600 \
+  --activity-bytes 4096 \
   /path/to/project
 ```
 
 The corresponding environment variables are
 `WILL_IT_SCALE_IDLE_TIMEOUT_SECONDS` and
-`WILL_IT_SCALE_MAX_RUNTIME_SECONDS`.
+`WILL_IT_SCALE_MAX_RUNTIME_SECONDS`. The meaningful-I/O threshold can be
+configured with `WILL_IT_SCALE_ACTIVITY_THRESHOLD_BYTES`.
 
 To display the full assessment and Copilot diagnostics in addition to the
 running status:

@@ -230,7 +230,10 @@ def main() -> None:
         timeout_project.mkdir()
         fake_copilot.write_text(
             "#!/usr/bin/env bash\n"
-            "sleep 30\n",
+            "while true; do\n"
+            "  printf '.' >&2\n"
+            "  sleep 0.1\n"
+            "done\n",
             encoding="utf-8",
         )
         timeout_environment = environment.copy()
@@ -242,6 +245,8 @@ def main() -> None:
                 "1",
                 "--max-runtime",
                 "10",
+                "--activity-bytes",
+                "4096",
                 str(timeout_project),
             ],
             check=False,
@@ -252,7 +257,9 @@ def main() -> None:
         )
         elapsed = time.monotonic() - started_at
         if timeout_run.returncode == 0:
-            raise AssertionError("Idle assessment unexpectedly succeeded.")
+            raise AssertionError(
+                "Heartbeat-only assessment unexpectedly succeeded."
+            )
         if elapsed >= 8:
             raise AssertionError(
                 f"Idle watchdog took too long to terminate: {elapsed:.1f}s"
@@ -270,7 +277,7 @@ def main() -> None:
         if "No Copilot I/O was observed for 1 seconds." not in timeout_content:
             raise AssertionError("Timeout report omitted the watchdog reason.")
         if "stopping (idle timeout)" not in timeout_run.stderr:
-            raise AssertionError("Idle timeout was not visible to the user.")
+            raise AssertionError("Heartbeat idle timeout was not visible.")
 
         runtime_project = temporary / "runtime-project"
         runtime_project.mkdir()

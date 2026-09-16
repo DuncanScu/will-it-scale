@@ -4,15 +4,14 @@ Status as of September 16, 2026.
 
 ## Blocked on AKS provisioning
 
-The retained cluster is `scalestreet-aks-racer3` in North Central US. Its
+The retained cluster in North Central US remains in `Creating`. Its
 control plane and system node pool remain in `Creating`; it has an OIDC issuer
 but no kubelet identity or managed node resources.
 
 When the cluster reaches `Succeeded`:
 
 1. Capture the kubelet identity object ID.
-2. Assign the kubelet identity `AcrPull` on
-   `scalestreetedhkf6pal5yca`.
+2. Assign the kubelet identity `AcrPull` on the deployed ACR.
 3. Retrieve cluster credentials with `az aks get-credentials`.
 4. Render and apply the constrained Kubernetes Deployment, service account,
    and LoadBalancer Service.

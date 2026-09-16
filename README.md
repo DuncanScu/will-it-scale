@@ -165,7 +165,7 @@ uv run uvicorn scale_street.main:app
 
 The deployment targets:
 
-- Subscription: `ef8ff4c4-777b-44e9-9491-e5e5e790f977`
+- Subscription: supplied through `AZURE_SUBSCRIPTION_ID`
 - Resource group: `ScaleStreet_RG`
 - Region: `eastus2`
 
@@ -193,10 +193,19 @@ AKS provisioning in the FDPO subscription remained in `Creating` before node
 infrastructure appeared. To keep the demo usable, the same ACR image is also
 deployed to Azure Container Instances:
 
-- Foundry-backed demo:
-  `http://scalestreet-edhkf6pal5yca.eastus2.azurecontainer.io:8000`
-- Deterministic backup:
-  `http://scalestreet-live-edhkf6pal5yca.eastus2.azurecontainer.io:8000`
+- Foundry-backed deployment: `agentMode=foundry`
+- Deterministic backup: `agentMode=simulated`
+
+Retrieve an environment's endpoint instead of storing a live URL:
+
+```shell
+fqdn="$(az container show \
+  --resource-group ScaleStreet_RG \
+  --name <container-group> \
+  --query ipAddress.fqdn \
+  --output tsv)"
+echo "http://${fqdn}:8000"
+```
 
 The Foundry-backed container uses the `scalestreet-workload` user-assigned
 identity with the **Foundry User**, **Cognitive Services OpenAI User**, and

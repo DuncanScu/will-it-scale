@@ -5,6 +5,7 @@ verbose=false
 progress_interval="${WILL_IT_SCALE_PROGRESS_INTERVAL:-1}"
 idle_timeout="${WILL_IT_SCALE_IDLE_TIMEOUT_SECONDS:-300}"
 max_runtime="${WILL_IT_SCALE_MAX_RUNTIME_SECONDS:-1800}"
+activity_threshold="${WILL_IT_SCALE_ACTIVITY_THRESHOLD_BYTES:-4096}"
 
 usage() {
   cat <<'EOF'
@@ -14,6 +15,7 @@ Options:
   -v, --verbose          Show the completed assessment and diagnostics.
   --idle-timeout SEC     Fail after no Copilot I/O (default: 300).
   --max-runtime SEC      Fail after total runtime (default: 1800).
+  --activity-bytes N     I/O required to reset idle time (default: 4096).
   -h, --help             Show this help.
 EOF
 }
@@ -38,6 +40,14 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       max_runtime="$2"
+      shift 2
+      ;;
+    --activity-bytes)
+      if [[ $# -lt 2 ]]; then
+        echo "--activity-bytes requires a byte count." >&2
+        exit 2
+      fi
+      activity_threshold="$2"
       shift 2
       ;;
     -h | --help)
@@ -65,6 +75,11 @@ for timeout_value in "${idle_timeout}" "${max_runtime}"; do
     exit 2
   fi
 done
+
+if [[ ! "${activity_threshold}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Activity bytes must be a positive whole number." >&2
+  exit 2
+fi
 
 if ! awk -v value="${progress_interval}" \
   'BEGIN { exit !(value ~ /^[0-9]+([.][0-9]+)?$/ && value > 0) }'; then
@@ -187,6 +202,7 @@ progress_loop() {
   local current_activity
   local elapsed
   local idle_for
+  local activity_delta
   local percent
   local activity_supported=true
 
@@ -211,7 +227,8 @@ progress_loop() {
           awk '/^(rchar|wchar):/ {total += $2} END {print total + 0}' \
             "/proc/${monitored_pid}/io" 2>/dev/null
         )"; then
-        if [[ "${current_activity}" != "${last_activity}" ]]; then
+        activity_delta="$((current_activity - last_activity))"
+        if ((activity_delta < 0 || activity_delta >= activity_threshold)); then
           last_activity="${current_activity}"
           last_activity_at="$SECONDS"
         fi

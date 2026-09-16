@@ -364,6 +364,8 @@ def main() -> None:
     require_text(runner, "render_status 100", RUNNER)
     require_text(runner, "--idle-timeout", RUNNER)
     require_text(runner, "--max-runtime", RUNNER)
+    require_text(runner, "--activity-bytes", RUNNER)
+    require_text(runner, "activity_delta >= activity_threshold", RUNNER)
     require_text(runner, "No Copilot I/O was observed", RUNNER)
     require_text(runner, "setsid copilot", RUNNER)
     require_text(runner, "validate_report", RUNNER)

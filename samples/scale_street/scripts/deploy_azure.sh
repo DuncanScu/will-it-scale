@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-ef8ff4c4-777b-44e9-9491-e5e5e790f977}"
+: "${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID before deploying.}"
+SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID}"
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-ScaleStreet_RG}"
 LOCATION="${AZURE_LOCATION:-eastus2}"
 DEPLOYMENT_NAME="scale-street-$(date -u +%Y%m%d%H%M%S)"
