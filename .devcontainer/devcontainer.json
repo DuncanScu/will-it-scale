@@ -5,7 +5,9 @@
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"image": "mcr.microsoft.com/devcontainers/python:3-3.14-trixie",
 	"features": {
-		"ghcr.io/devcontainers-extra/features/uv:1": {}
+		"ghcr.io/devcontainers-extra/features/uv:1": {},
+		"ghcr.io/devcontainers/features/copilot-cli:1": {},
+		"ghcr.io/devcontainers/features/azure-cli:1": {}
 	},
 	"postCreateCommand": "bash .devcontainer/scripts/setup-alias.sh",
 
@@ -26,6 +28,9 @@
 			]
 		}
 	},
+	"containerEnv": {
+		"UV_INDEX_URL": "https://packagefeedproxy.microsoft.io/pypi/simple/"
+	}
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
