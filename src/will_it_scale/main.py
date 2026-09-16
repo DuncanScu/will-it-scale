@@ -1,7 +1,7 @@
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
 
-endpoint = "https://will-it-scale-resource.services.ai.azure.com/api/projects/will-it-scale"
+endpoint = "https://will-it-scale-hack-resource.services.ai.azure.com/api/projects/will-it-scale-hack"
 
 
 def main() -> None:
