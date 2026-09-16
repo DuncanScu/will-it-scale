@@ -2,7 +2,7 @@ import asyncio
 from time import monotonic
 
 from rich.text import Text
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -318,6 +318,11 @@ class WillItScaleApp(App[None]):
         if not busy:
             prompt.focus()
 
+    def on_click(self, event: events.Click) -> None:
+        prompt = self.query_one("#prompt", Input)
+        if self.query_one("#shell").display and not prompt.disabled:
+            prompt.focus()
+
     async def _add_message(self, role: str, content: str) -> ConversationMessage:
         self._message_number += 1
         message = ConversationMessage(
@@ -388,22 +393,28 @@ class WillItScaleApp(App[None]):
     async def run_report(self, requirements: str) -> None:
         self._started_at = monotonic()
         self._set_busy(True, "Preparing the assessment")
-        response = await self._add_message("Assistant", "")
+        response: ConversationMessage | None = None
         content = ""
         try:
             async for chunk in self.service.stream_report(
                 requirements, self._set_status
             ):
                 content += chunk
-                await response.set_content(content)
+                if response is None:
+                    response = await self._add_message("Assistant", content)
+                else:
+                    await response.set_content(content)
                 self.call_after_refresh(self._scroll_to_end)
         except asyncio.CancelledError:
             if not content:
-                await response.set_content("*Assessment cancelled.*")
+                await self._add_message("Assistant", "*Assessment cancelled.*")
             self._set_busy(False, "Waiting for requirements")
             raise
         except Exception as error:
-            await response.set_content(f"Assessment failed: `{error}`")
+            if response is None:
+                await self._add_message("Assistant", f"Assessment failed: `{error}`")
+            else:
+                await response.set_content(f"Assessment failed: `{error}`")
             self._set_busy(False, "Assessment failed · answer again")
             return
 
@@ -416,19 +427,25 @@ class WillItScaleApp(App[None]):
     async def run_follow_up(self, message: str) -> None:
         self._started_at = monotonic()
         self._set_busy(True, "Thinking")
-        response = await self._add_message("Assistant", "")
+        response: ConversationMessage | None = None
         content = ""
         try:
             async for chunk in self.service.stream_follow_up(message):
                 content += chunk
-                await response.set_content(content)
+                if response is None:
+                    response = await self._add_message("Assistant", content)
+                else:
+                    await response.set_content(content)
                 self.call_after_refresh(self._scroll_to_end)
         except asyncio.CancelledError:
             if not content:
-                await response.set_content("*Response cancelled.*")
+                await self._add_message("Assistant", "*Response cancelled.*")
             raise
         except Exception as error:
-            await response.set_content(f"Request failed: `{error}`")
+            if response is None:
+                await self._add_message("Assistant", f"Request failed: `{error}`")
+            else:
+                await response.set_content(f"Request failed: `{error}`")
             self._set_busy(False, "Request failed")
             return
 

@@ -76,6 +76,13 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(app.query_one("#shell").display)
                 self.assertIs(app.focused, app.query_one("#prompt"))
 
+    async def test_clicking_shell_focuses_prompt(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.click("#brand")
+            self.assertIs(app.focused, app.query_one("#prompt"))
+
     async def test_investigation_starts_only_after_requirements(self) -> None:
         started = asyncio.Event()
 
@@ -185,17 +192,24 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
         app = WillItScaleApp(service=DelayedService())
         async with app.run_test(size=(100, 30)) as pilot:
             await self.wait_until_ready(app)
+            initial_assistant_count = len(
+                [message for message in app.query(ConversationMessage)
+                 if message.role == "Assistant"]
+            )
             await pilot.press("escape")
             await pilot.click("#prompt")
             await pilot.press(*"250 RPS", "enter")
             await pilot.pause()
 
             messages = list(app.query(ConversationMessage))
-            self.assertEqual(messages[-1].content, "")
+            self.assertEqual(
+                len([message for message in messages if message.role == "Assistant"]),
+                initial_assistant_count,
+            )
 
             first_chunk.set()
             await self.wait_until_ready(app)
-            self.assertIn("Initial finding", messages[-1].content)
+            self.assertIn("Initial finding", app.query(ConversationMessage)[-1].content)
 
     async def test_slash_commands(self) -> None:
         app = WillItScaleApp(service=FakeAssessmentService())
