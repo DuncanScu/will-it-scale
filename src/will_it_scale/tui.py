@@ -461,12 +461,13 @@ class WillItScaleApp(App[None]):
     def _set_status(self, status: str) -> None:
         self._status_text = status
         self.query_one("#status", Static).update(status)
-        if status.startswith("Read application source: "):
-            self._show_file_read(status.removeprefix("Read application source: "))
+        if status.startswith("Read "):
+            self._show_file_read(status)
 
     @work(group="tool-activity")
-    async def _show_file_read(self, relative_path: str) -> None:
-        await self._add_message("System", f"Read application source: `{relative_path}`")
+    async def _show_file_read(self, activity: str) -> None:
+        label, relative_path = activity.split(": ", maxsplit=1)
+        await self._add_message("System", f"{label}: `{relative_path}`")
 
     def _set_busy(self, busy: bool, status: str = "Ready") -> None:
         self._busy = busy

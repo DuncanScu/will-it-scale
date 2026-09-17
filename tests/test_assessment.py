@@ -36,6 +36,10 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
         architect = FakeAgent(["Short ", "report"])
         statuses: list[str] = []
 
+        def create_kubernetes_agent(_, on_file_read):
+            on_file_read("deployment.yaml")
+            return kubernetes_agent
+
         def create_application_agent(_, on_file_read):
             on_file_read("app.py")
             return application_agent
@@ -48,7 +52,7 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
             service = AssessmentService(
                 manifest_path=manifest,
                 application_source_path=application_source,
-                kubernetes_agent_factory=lambda: kubernetes_agent,
+                kubernetes_agent_factory=create_kubernetes_agent,
                 application_performance_agent_factory=create_application_agent,
                 architect_agent_factory=lambda: architect,
             )
@@ -68,12 +72,13 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(report, "Short report")
         self.assertEqual(follow_up, "First second.")
-        self.assertIn("250 RPS, 99.9% availability", kubernetes_agent.calls[0][0])
+        self.assertIn("read_manifest_file tool", kubernetes_agent.calls[0][0])
         self.assertIn("read_source_file tool", application_agent.calls[0][0])
         self.assertIn("250 RPS, 99.9% availability", architect.calls[0][0])
         self.assertIn("Investigator findings", architect.calls[0][0])
         self.assertIn("Application findings", architect.calls[0][0])
         self.assertIn("Read application source: app.py", statuses)
+        self.assertIn("Read Kubernetes manifest: deployment.yaml", statuses)
         self.assertEqual(architect.calls[0][1:], (architect.session, True))
         self.assertEqual(architect.calls[1], ("What next?", architect.session, True))
 

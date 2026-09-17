@@ -4,6 +4,7 @@ from pathlib import Path
 
 from will_it_scale.tools.application_source import (
     read_application_source_file,
+    read_source_file,
 )
 
 
@@ -22,6 +23,16 @@ class ApplicationPerformanceInvestigatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "inside"):
                 read_application_source_file(Path(directory), "../outside.py")
+
+    def test_reads_allowed_yaml_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source_root = Path(directory)
+            manifest_file = source_root / "deployment.yaml"
+            manifest_file.write_text("kind: Deployment", encoding="utf-8")
+
+            content = read_source_file(source_root, "deployment.yaml", frozenset({".yaml"}))
+
+        self.assertEqual(content, "kind: Deployment")
 
 
 if __name__ == "__main__":

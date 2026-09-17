@@ -34,7 +34,7 @@ class AssessmentService:
         self,
         manifest_path: Path = DEFAULT_MANIFEST,
         application_source_path: Path = DEFAULT_APPLICATION_SOURCE,
-        kubernetes_agent_factory: Callable[[], Agent] = (
+        kubernetes_agent_factory: Callable[[Path, Callable[[str], None]], Agent] = (
             create_kubernetes_investigator_agent
         ),
         application_performance_agent_factory: Callable[
@@ -59,11 +59,13 @@ class AssessmentService:
         requirements: str,
         on_status: StatusCallback | None = None,
     ) -> AsyncIterator[str]:
-        self._set_status(on_status, "Reading Kubernetes configuration")
-        manifest = self.manifest_path.read_text(encoding="utf-8")
-
         self._set_status(on_status, "Investigating scaling and availability risks")
-        investigator = self._kubernetes_agent_factory()
+        investigator = self._kubernetes_agent_factory(
+            self.manifest_path.parent,
+            lambda relative_path: self._set_status(
+                on_status, f"Read Kubernetes manifest: {relative_path}"
+            ),
+        )
         investigation = await investigator.run(
             """
             Investigate the Kubernetes configuration against the user's workload and reliability
@@ -77,9 +79,9 @@ class AssessmentService:
             + requirements
             + """
 
-            Kubernetes manifest:
+            The Kubernetes entry point is deployment.yaml. Use the read_manifest_file tool to
+            inspect it and any other relevant YAML manifests, only as needed.
             """
-            + manifest
         )
 
         self._set_status(on_status, "Investigating application performance risks")

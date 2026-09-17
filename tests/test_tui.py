@@ -18,6 +18,7 @@ class FakeAssessmentService:
         self.requirements.append(requirements)
         if on_status is not None:
             on_status("Preparing the assessment")
+            on_status("Read Kubernetes manifest: deployment.yaml")
             on_status("Read application source: app.py")
         yield "- Initial "
         await asyncio.sleep(0)
@@ -175,6 +176,10 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
             ]
             self.assertIn("Initial finding", assistant_messages[-1].content)
             self.assertTrue(app._conversation_ready)
+            self.assertIn(
+                "Read Kubernetes manifest: `deployment.yaml`",
+                [message.content for message in messages],
+            )
             self.assertIn(
                 "Read application source: `app.py`",
                 [message.content for message in messages],
