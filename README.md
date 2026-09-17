@@ -189,12 +189,10 @@ that exact model version remains available.
 
 ### Hackathon fallback deployment
 
-AKS provisioning in the FDPO subscription remained in `Creating` before node
-infrastructure appeared. To keep the demo usable, the same ACR image is also
-deployed to Azure Container Instances:
-
-- Foundry-backed deployment: `agentMode=foundry`
-- Deterministic backup: `agentMode=simulated`
+Azure Container Instances temporarily hosted Foundry-backed and deterministic
+fallbacks while AKS provisioning was blocked. Both fallback container groups
+were removed on September 17, 2026 after the AKS deployment passed health,
+readiness, and Foundry validation.
 
 Retrieve an environment's endpoint instead of storing a live URL:
 
@@ -207,10 +205,11 @@ fqdn="$(az container show \
 echo "http://${fqdn}:8000"
 ```
 
-The Foundry-backed container uses the `scalestreet-workload` user-assigned
-identity with the **Foundry User**, **Cognitive Services OpenAI User**, and
-**AcrPull** roles. ACR Premium is required for the managed-identity image pull
-used by Azure Container Instances.
+The fallback templates use the `scalestreet-workload` user-assigned identity
+with the **Foundry User**, **Cognitive Services OpenAI User**, and **AcrPull**
+roles. ACR Premium is required only while the Azure Container Instances
+managed-identity image-pull fallback is deployed; the active AKS environment
+uses ACR Basic.
 
 The focused fallback templates are:
 

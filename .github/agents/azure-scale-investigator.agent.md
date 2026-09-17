@@ -177,6 +177,24 @@ project.
 
 Use tools without asking the developer which tool to select.
 
+Azure MCP calls are strictly serial:
+
+- Issue exactly one `azure-mcp/*` call in an assistant turn.
+- Wait for that call to complete before issuing another Azure MCP call.
+- Never batch or parallelize Azure MCP calls, including `learn=true`
+  capability-discovery calls.
+- For a hierarchical namespace tool, use `learn=true` only immediately before
+  its first required command and only after a matching resource was
+  discovered.
+- Reuse the learned command schema for the rest of the assessment. Do not
+  repeat capability discovery for the same namespace.
+- Do not prelearn every available namespace. A broad capability-learning
+  fan-out can leave the Azure MCP turn waiting indefinitely.
+- Treat hierarchical live inspection as optional enrichment after core
+  inventory. Project evidence plus `subscription_list`, `group_list`, and
+  `group_resource_list` must be sufficient to produce a degraded report when
+  deeper evidence is unavailable.
+
 Follow this order:
 
 1. Use local search to locate project, infrastructure, deployment, and
@@ -217,6 +235,12 @@ continue with other independent checks. Do not substitute an unrelated tool.
 A tool failure must not abort the overall assessment unless it makes project
 discovery or Azure scope resolution impossible.
 
+If the launcher identifies the run as a recovery attempt, obey its restricted
+tool policy: do not call hierarchical namespace tools or use `learn=true`.
+Finish from project evidence and core Azure inventory, mark unavailable deep
+evidence Unknown, and lower confidence. Never repeat the full-evidence
+workflow during that recovery attempt.
+
 Maintain a tool-issues collection throughout the assessment. For each
 unresolved failure record:
 
@@ -241,6 +265,10 @@ Apply this policy:
 - **Authentication or authorization error (HTTP 401 or 403)**: do not retry.
   Log the missing access, mark affected live evidence Unknown, and continue
   with project configuration and other accessible resources.
+- **Hierarchical namespace authentication failure**: if capability discovery
+  reports that its delegated MCP client cannot obtain a token, do not start an
+  interactive browser flow and do not repeat the discovery call. Record the
+  namespace as inaccessible and continue serially.
 - **Not found (HTTP 404)**: refresh the correlated resource inventory once. If
   the resource is still absent, mark it unable to verify and continue.
 - **Throttling, timeout, or transient service failure (HTTP 408, 429, or
@@ -617,6 +645,7 @@ An assessment is complete only when:
 - Findings use evidence labels.
 - Unknowns are explicit.
 - Recoverable tool failures were recorded without aborting independent checks.
+- Azure MCP calls were issued serially, with no parallel capability discovery.
 - The TL;DR appears before detailed analysis.
 - Recommendations are justified and include confidence plus confidence
   rationale.

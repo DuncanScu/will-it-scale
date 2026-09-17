@@ -51,24 +51,16 @@ required in a project being assessed.
 
 ## Developer workflow
 
-Start Copilot CLI in the project to inspect:
+Use the installed launcher for the standardized unattended workflow:
 
 ```shell
 cd /path/to/project
-copilot
+will-it-scale-azure .
 ```
 
-Select the agent:
-
-```text
-/agent azure-scale-investigator
-```
-
-Then ask:
-
-```text
-Will it scale?
-```
+This is the only supported invocation that provides the percentage-only
+terminal display, watchdogs, bounded recovery, automatic report persistence,
+and strict output validation.
 
 The agent:
 
@@ -82,25 +74,24 @@ The agent:
 8. Evaluates cross-resource bottleneck chains.
 9. Returns a read-only assessment with evidence labels and explicit unknowns.
 
-The agent can also be called non-interactively:
+For interactive investigation, start Copilot CLI in the project:
 
 ```shell
-copilot \
-  --agent azure-scale-investigator \
-  --allow-all-tools \
-  --no-ask-user \
-  --no-custom-instructions \
-  --prompt "Will it scale?"
+cd /path/to/project
+copilot
 ```
 
-`--allow-all-tools` approves only tools visible to this agent profile. The
-profile exposes local read/search tools and the read-only Azure MCP server; it
-does not expose shell execution or file editing. This avoids per-tool approval
-prompts without granting the agent additional capabilities.
+Then select `/agent azure-scale-investigator` and ask `Will it scale?`.
+Interactive use does not provide launcher percentages, watchdog recovery, or
+automatic Markdown report persistence, and it may show tool activity or
+permission prompts.
 
-`--no-ask-user` prevents interactive clarification prompts. If Azure scope is
-ambiguous, the agent returns a partial static assessment, lists the candidate
-scopes, and explains what must be supplied for a deterministic rerun.
+The launcher passes `--allow-all-tools`, which approves only tools visible to
+this agent profile. The profile exposes local read/search tools and the
+read-only Azure MCP server; it does not expose shell execution or file
+editing. The launcher also passes `--no-ask-user`. If Azure scope is ambiguous,
+the agent returns a partial static assessment, lists the candidate scopes, and
+explains what must be supplied for a deterministic rerun.
 
 The profile pins `gpt-5.4` so users do not unknowingly compare assessments
 produced by different default models.
@@ -109,6 +100,19 @@ The launcher also uses `--no-custom-instructions` so unrelated `AGENTS.md`,
 `CLAUDE.md`, `GEMINI.md`, or repository Copilot instructions cannot alter the
 assessment workflow. The investigator can still read architecture and
 deployment documents as project evidence.
+
+Azure MCP calls are intentionally serialized. The agent invokes one Azure MCP
+tool at a time, waits for completion, and only learns a hierarchical
+namespace after inventory identifies a matching resource. Parallel
+capability-discovery calls are prohibited because the pinned Azure MCP beta can
+leave the entire turn waiting when several delegated namespace servers are
+initialized concurrently.
+
+If a full-evidence attempt stalls, the automatic retry switches to bounded
+recovery mode. The fresh process uses project evidence and only the direct
+subscription/resource-group inventory tools, skips all hierarchical
+`learn=true` calls, marks unavailable deep evidence Unknown, and completes a
+lower-confidence report instead of repeating the same hang.
 
 ## Installation scopes
 
@@ -156,11 +160,14 @@ only after a successful assessment.
 
 The launcher also prevents quiet hangs:
 
-- It stops the run after five minutes without Copilot process I/O.
+- It stops the run after two minutes without meaningful Copilot process I/O.
 - It stops the run after 30 minutes of total execution time.
 - Small heartbeat writes do not reset the idle timer; at least 4 KiB of
   additional Copilot I/O is required to count as meaningful activity.
 - It terminates the Copilot process group, including Azure MCP children.
+- It retries once in a fresh Copilot process after a transient process,
+  connection, idle-timeout, or invalid-response failure. The retry uses
+  bounded recovery mode and cannot repeat hierarchical Azure discovery.
 - It writes the timeout reason and partial output to a `_failed.md` report.
 
 Override these limits when a deliberately long assessment requires it:
@@ -170,6 +177,7 @@ will-it-scale-azure \
   --idle-timeout 600 \
   --max-runtime 3600 \
   --activity-bytes 4096 \
+  --retries 1 \
   /path/to/project
 ```
 
@@ -177,6 +185,9 @@ The corresponding environment variables are
 `WILL_IT_SCALE_IDLE_TIMEOUT_SECONDS` and
 `WILL_IT_SCALE_MAX_RUNTIME_SECONDS`. The meaningful-I/O threshold can be
 configured with `WILL_IT_SCALE_ACTIVITY_THRESHOLD_BYTES`.
+The retry count can be configured with `WILL_IT_SCALE_RETRY_COUNT`; set it to
+`0` to disable automatic retry. The maximum accepted retry count is `3`.
+Disabling retries also disables the bounded inventory-only recovery path.
 
 To display the full assessment and Copilot diagnostics in addition to the
 running status:
@@ -212,28 +223,48 @@ copilot \
   --allow-all-tools \
   --no-ask-user \
   --no-custom-instructions \
+  --no-auto-update \
+  --disable-builtin-mcps \
+  --disable-mcp-server workiq \
+  --disable-mcp-server workiq-preview \
   --no-color \
   --silent \
   --stream off \
+  --output-format json \
   --prompt "Will it scale?"
 ```
 
 It deliberately uses `--allow-all-tools`, not `--allow-all`. Project path
 access remains limited to the selected working directory, and arbitrary URL
-access is not enabled.
+access is not enabled. It also disables automatic CLI updates during an
+assessment so the executable cannot change mid-run; teams should standardize
+the installed Copilot CLI version separately when comparing results.
+The launcher requests that the built-in GitHub, WorkIQ, and WorkIQ Preview MCP
+servers be disabled. The agent profile still exposes only its curated local
+read/search and Azure MCP tools. Copilot CLI 1.0.86 may initialize globally
+installed plugin transports before applying the per-run disable flags. In the
+verified Copilot CLI 1.0.86-0 behavior, WorkIQ authentication warnings can
+still appear in diagnostic logs; those tools are not available to the
+assessment.
 
 The launcher, rather than the model, creates the report directory and file.
 The agent therefore remains unable to edit arbitrary project files. If the
-Copilot process fails, partial output is retained with a `_failed.md` suffix
-and an incomplete-assessment warning at the top instead of being mistaken for
-a completed report. Copilot diagnostics are hidden from the terminal by
-default and included on screen in verbose mode. Raw diagnostics are not stored
-in reports because they can contain sensitive operational context. Idle and
-maximum-runtime failures include the watchdog reason in the report. A
-zero-status Copilot exit is also treated as failed unless the output begins
-with the required report title and contains the TL;DR and recommendations
-sections. Pressing Ctrl+C terminates the Copilot/Azure MCP process group and
-preserves the interrupted run as a failed report.
+launcher requests JSONL output from Copilot and extracts the raw final
+`assistant.message` Markdown. This avoids Copilot's terminal renderer removing
+heading markers or converting Markdown tables before validation. If the
+Copilot process fails, partial model output is retained with a `_failed.md`
+suffix and an incomplete-assessment warning at the top instead of being
+mistaken for a completed report. Copilot diagnostics and JSONL protocol events
+are hidden from the terminal by default and included on screen only where
+applicable in verbose mode; protocol events are never written into the
+Markdown report. Raw diagnostics are not stored in reports because they can
+contain sensitive operational context. Idle and maximum-runtime failures
+include the watchdog reason in the report. A zero-status Copilot exit is also
+treated as failed unless the extracted output begins with the required report
+title and contains every required section in the defined order. Pressing
+Ctrl+C terminates the Copilot/Azure MCP process group and preserves the
+interrupted run as a failed report. When no assessment content was produced,
+the failed report says so explicitly instead of appearing blank.
 
 ## Permission prompts and Azure MCP elicitation
 
@@ -423,18 +454,19 @@ python3 agents/azure-scale-investigator/tests/validate_mcp_tools.py
 ```
 
 The validation checks structural and safety invariants, including report
-filename uniqueness, successful Markdown capture, and failed-run preservation.
+filename uniqueness, raw Markdown extraction from Copilot JSONL, successful
+Markdown capture, and failed-run preservation.
 Behavioral test cases
 under `tests/cases/` describe expected outcomes for representative projects.
 
-The first manual pilot is Scale Street:
+Run the Scale Street pilot through the standardized launcher:
 
 ```shell
-cd samples/scale_street
-copilot
+will-it-scale-azure samples/scale_street
 ```
 
-Then select `azure-scale-investigator` and ask `Will it scale?`.
+Use the default retry setting for this pilot so a stalled optional namespace
+can fall back to the bounded inventory-only assessment.
 
 ## Design principles
 

@@ -14,8 +14,8 @@ param aksVmSize string = 'Standard_D2s_v6'
   'Standard'
   'Premium'
 ])
-@description('Azure Container Registry SKU. Premium supports ACI managed-identity pulls.')
-param acrSkuName string = 'Premium'
+@description('Azure Container Registry SKU. Use Premium only when ACI managed-identity pulls are required.')
+param acrSkuName string = 'Basic'
 
 @description('Deploy the pinned demo model after confirming regional quota.')
 param deployFoundryModel bool = false

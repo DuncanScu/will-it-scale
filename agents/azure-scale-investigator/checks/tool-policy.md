@@ -92,6 +92,16 @@ Copilot may display a friendly label rather than the MCP identifier.
 
 ## Required order
 
+Issue exactly one Azure MCP call per assistant turn and wait for its result
+before issuing the next call. Never batch hierarchical namespace calls or
+parallelize `learn=true` discovery. Learn a namespace only after inventory
+shows a matching resource, cache the returned command schema, and do not learn
+that namespace again during the assessment.
+
+Hierarchical calls are optional enrichment. A completed assessment may rely on
+project evidence plus `subscription_list`, `group_list`, and
+`group_resource_list` when deeper live evidence is unavailable.
+
 1. Local `search` and `read`
 2. `subscription_list` only when project evidence does not provide one unique
    subscription
@@ -104,6 +114,20 @@ Copilot may display a friendly label rather than the MCP identifier.
 7. `monitor` for fixed one-hour and 24-hour metric or log windows
 8. `applicationinsights`, `applens`, `grafana`, `datadog`, or `workbooks` only
    when discovered
+
+## Recovery attempts
+
+The launcher uses a bounded degraded mode after a full-evidence attempt fails
+or stops producing meaningful I/O. During that fresh-process retry, the agent
+must use only `subscription_list`, `group_list`, and `group_resource_list` for
+live Azure evidence. It must not invoke hierarchical tools or use
+`learn=true`.
+
+The recovery report must still be complete. It records skipped metrics,
+health, quota, recommendations, and service-specific configuration as Unknown,
+explains the fallback in **Tool execution notes**, and lowers confidence. This
+prevents a single delegated namespace or transport failure from blocking all
+useful static and inventory findings.
 
 ## Intentionally excluded
 
@@ -159,6 +183,7 @@ The agent uses bounded recovery:
 | Unsupported metric or aggregation (`400`) | Read metric definitions, correct once, then record Unknown |
 | Other request validation (`400`) | Retry once only when the response provides a clear correction |
 | Authentication or authorization (`401`/`403`) | Do not retry; record inaccessible evidence |
+| Delegated hierarchical-tool authentication failure | Do not launch interactive authentication or repeat discovery; record the namespace as inaccessible |
 | Resource not found (`404`) | Refresh inventory once, then mark unable to verify |
 | Timeout, throttling, or service failure (`408`/`429`/`5xx`) | Retry once with server delay when supplied |
 | Empty result | Record no data; do not infer healthy behavior |

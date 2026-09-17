@@ -12,7 +12,7 @@
       "value": "Standard_D2s_v6"
     },
     "acrSkuName": {
-      "value": "Premium"
+      "value": "Basic"
     },
     "deployFoundryModel": {
       "value": false

@@ -301,6 +301,10 @@ def main() -> None:
         "## Actions and recommendations",
         "Confidence rationale",
         "Do not emit interim narration",
+        "Issue exactly one `azure-mcp/*` call",
+        "Never batch or parallelize Azure MCP calls",
+        "do not repeat the discovery call",
+        "do not call hierarchical namespace tools or use `learn=true`",
     ):
         require_text(profile, expected, PROFILE)
 
@@ -355,9 +359,17 @@ def main() -> None:
     require_text(runner, "--allow-all-tools", RUNNER)
     require_text(runner, "--no-ask-user", RUNNER)
     require_text(runner, "--no-custom-instructions", RUNNER)
+    require_text(runner, "--no-auto-update", RUNNER)
+    require_text(runner, "--disable-builtin-mcps", RUNNER)
+    require_text(runner, "--disable-mcp-server workiq", RUNNER)
+    require_text(runner, "--disable-mcp-server workiq-preview", RUNNER)
+    require_text(runner, "Invoke exactly one Azure MCP tool at a time", RUNNER)
     require_text(runner, "reports/willitscale", RUNNER)
     require_text(runner, "willitscale_results_", RUNNER)
     require_text(runner, "--silent", RUNNER)
+    require_text(runner, "--output-format json", RUNNER)
+    require_text(runner, 'event.type !== "assistant.message"', RUNNER)
+    require_text(runner, 'event.data.phase === "final_answer"', RUNNER)
     require_text(runner, "tee", RUNNER)
     require_text(runner, "--verbose", RUNNER)
     require_text(runner, "estimated_percent", RUNNER)
@@ -365,7 +377,13 @@ def main() -> None:
     require_text(runner, "--idle-timeout", RUNNER)
     require_text(runner, "--max-runtime", RUNNER)
     require_text(runner, "--activity-bytes", RUNNER)
+    require_text(runner, "--retries", RUNNER)
     require_text(runner, "activity_delta >= activity_threshold", RUNNER)
+    require_text(runner, "retrying (attempt", RUNNER)
+    require_text(runner, "Recovery attempt:", RUNNER)
+    require_text(runner, "Do not invoke hierarchical Azure MCP", RUNNER)
+    require_text(runner, "A useful degraded report is required", RUNNER)
+    require_text(runner, "No assessment content was produced", RUNNER)
     require_text(runner, "No Copilot I/O was observed", RUNNER)
     require_text(runner, "setsid copilot", RUNNER)
     require_text(runner, "validate_report", RUNNER)

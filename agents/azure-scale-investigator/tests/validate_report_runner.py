@@ -136,10 +136,17 @@ def main() -> None:
             "--allow-all-tools",
             "--no-ask-user",
             "--no-custom-instructions",
+            "--no-auto-update",
+            "--disable-builtin-mcps",
+            "--disable-mcp-server",
+            "workiq",
+            "workiq-preview",
             "--no-color",
             "--silent",
             "--stream",
             "off",
+            "--output-format",
+            "json",
         ):
             if required_argument not in arguments:
                 raise AssertionError(
@@ -197,11 +204,103 @@ def main() -> None:
         if "Rerun with --verbose" not in failed_run.stderr:
             raise AssertionError("Failure did not explain how to see diagnostics.")
 
+        retry_project = temporary / "retry-project"
+        retry_project.mkdir()
+        retry_counter = temporary / "retry-counter"
+        fake_copilot.write_text(
+            "#!/usr/bin/env bash\n"
+            "count=0\n"
+            "if [[ -f \"$FAKE_RETRY_COUNTER\" ]]; then\n"
+            "  count=$(cat \"$FAKE_RETRY_COUNTER\")\n"
+            "fi\n"
+            "count=$((count + 1))\n"
+            "printf '%s' \"$count\" > \"$FAKE_RETRY_COUNTER\"\n"
+            "printf '%s\\n' \"$@\" > \"$FAKE_COPILOT_ARGS\"\n"
+            "if [[ \"$count\" -eq 1 ]]; then\n"
+            "  exit 0\n"
+            "fi\n"
+            "printf '%s' \"$FAKE_COPILOT_REPORT\"\n",
+            encoding="utf-8",
+        )
+        retry_environment = environment.copy()
+        retry_environment["FAKE_RETRY_COUNTER"] = str(retry_counter)
+        retry_run = subprocess.run(
+            [str(RUNNER), str(retry_project)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=retry_environment,
+        )
+        if retry_counter.read_text(encoding="utf-8") != "2":
+            raise AssertionError("Transient failure was not retried exactly once.")
+        if "retrying (attempt 2 of 2)" not in retry_run.stderr:
+            raise AssertionError("Automatic retry was not visible.")
+        retry_reports = list(
+            (retry_project / "reports" / "willitscale").glob(
+                "willitscale_results_*.md"
+            )
+        )
+        if len(retry_reports) != 1:
+            raise AssertionError("Successful retry did not produce one report.")
+        if retry_reports[0].read_text(encoding="utf-8") != FAKE_REPORT:
+            raise AssertionError("Successful retry report is incorrect.")
+        retry_arguments = args_file.read_text(encoding="utf-8")
+        for recovery_instruction in (
+            "Recovery attempt:",
+            "Do not invoke hierarchical Azure MCP namespace tools",
+            "A useful degraded report is required",
+        ):
+            if recovery_instruction not in retry_arguments:
+                raise AssertionError(
+                    "Retry did not use bounded recovery instructions: "
+                    f"{recovery_instruction}"
+                )
+
+        json_project = temporary / "json-output-project"
+        json_project.mkdir()
+        fake_copilot.write_text(
+            "#!/usr/bin/env bash\n"
+            "python3 - <<'PY'\n"
+            "import json\n"
+            "import os\n"
+            "print(json.dumps({'type': 'session.tools_updated', 'data': {}}))\n"
+            "print(json.dumps({\n"
+            "    'type': 'assistant.message',\n"
+            "    'data': {\n"
+            "        'content': os.environ['FAKE_COPILOT_REPORT'],\n"
+            "        'phase': 'final_answer',\n"
+            "    },\n"
+            "}))\n"
+            "print(json.dumps({'type': 'result', 'exitCode': 0}))\n"
+            "PY\n",
+            encoding="utf-8",
+        )
+        json_run = subprocess.run(
+            [str(RUNNER), str(json_project)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        json_reports = list(
+            (json_project / "reports" / "willitscale").glob(
+                "willitscale_results_*.md"
+            )
+        )
+        if len(json_reports) != 1:
+            raise AssertionError("JSONL run did not produce one report.")
+        if json_reports[0].read_text(encoding="utf-8") != FAKE_REPORT:
+            raise AssertionError("JSONL final Markdown extraction is incorrect.")
+        if "session.tools_updated" in json_reports[0].read_text(
+            encoding="utf-8"
+        ):
+            raise AssertionError("JSONL protocol events leaked into the report.")
+
         invalid_project = temporary / "invalid-report-project"
         invalid_project.mkdir()
         fake_copilot.write_text(
             "#!/usr/bin/env bash\n"
-            "printf 'This is not a complete assessment.\\n'\n",
+            "exit 0\n",
             encoding="utf-8",
         )
         invalid_run = subprocess.run(
@@ -225,6 +324,8 @@ def main() -> None:
         invalid_content = invalid_reports[0].read_text(encoding="utf-8")
         if "did not return the required report format" not in invalid_content:
             raise AssertionError("Invalid report failure reason is missing.")
+        if "_No assessment content was produced" not in invalid_content:
+            raise AssertionError("Empty report was not explicitly documented.")
 
         timeout_project = temporary / "timeout-project"
         timeout_project.mkdir()
@@ -358,8 +459,8 @@ def main() -> None:
             raise AssertionError("Interrupted report omitted the signal reason.")
 
         print(
-            "Report runner provides quiet progress, verbose output, "
-            "and idle-hang protection."
+            "Report runner provides quiet progress, bounded retries, "
+            "verbose output, and idle-hang protection."
         )
 
 

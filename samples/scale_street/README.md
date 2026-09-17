@@ -33,8 +33,11 @@ The runtime identity needs both **Foundry User** and
 
 ## Azure Container Instances fallback
 
-The hackathon environment uses Azure Container Instances while AKS provisioning
-is blocked. ACR must use the Premium SKU for ACI managed-identity image pulls.
+Azure Container Instances were used temporarily while AKS provisioning was
+blocked. Both fallback container groups were removed on September 17, 2026
+after the AKS deployment passed health, readiness, and Foundry validation.
+The templates remain available if a fallback is needed again. ACR must use the
+Premium SKU for ACI managed-identity image pulls.
 
 ```shell
 az deployment group create \
