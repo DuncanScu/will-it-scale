@@ -160,6 +160,50 @@ def test_cluster_autoscaling_configured_passes():
     assert only(result, ".autoscaling").status == PASS
 
 
+# --- runtime health (live pod status) ---------------------------------------
+
+
+def live_deployment(name="app", replicas=1, ready=1, pods=None):
+    return {
+        "name": name,
+        "replicas": replicas,
+        "ready_replicas": ready,
+        "available_replicas": ready,
+        "containers": [container()],
+        "pods": pods if pods is not None else [],
+    }
+
+
+def test_rollout_unschedulable_fails():
+    d = live_deployment(
+        replicas=1,
+        ready=0,
+        pods=[{"name": "p1", "phase": "Pending", "ready": False, "reason": "Unschedulable: insufficient cpu"}],
+    )
+    finding = only(evaluate_workloads(facts(deployments=[d])), ".rollout")
+    assert finding.status == FAIL
+    assert "0/1" in finding.observed
+    assert "Unschedulable" in finding.observed
+
+
+def test_rollout_healthy_passes():
+    d = live_deployment(
+        replicas=2,
+        ready=2,
+        pods=[
+            {"name": "a", "phase": "Running", "ready": True, "reason": None},
+            {"name": "b", "phase": "Running", "ready": True, "reason": None},
+        ],
+    )
+    assert only(evaluate_workloads(facts(deployments=[d])), ".rollout").status == PASS
+
+
+def test_no_rollout_finding_without_pod_data():
+    # Manifest-shaped deployment (no runtime pod data) -> no rollout finding.
+    ids = [f.id for f in evaluate_workloads(facts(deployments=[deployment(replicas=1)]))]
+    assert not any(i.endswith(".rollout") for i in ids)
+
+
 # --- fixture scenario (mirrors test_data/sample_service) --------------------
 
 

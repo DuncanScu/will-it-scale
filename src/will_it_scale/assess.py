@@ -1,6 +1,7 @@
-"""Assessment runner: collect facts, evaluate deterministic checks, save findings.
+"""Deterministic assessment engine: collect facts, evaluate checks, report findings.
 
-Read-only. Produces findings for human review; recommends, never deploys.
+Read-only. Produces findings for human review; recommends, never deploys. Driven by
+the `will-it-scale` CLI (see `will_it_scale.__main__`); not a standalone entry point.
 """
 
 from __future__ import annotations
@@ -34,16 +35,10 @@ def _print_summary(findings: list[Finding]) -> None:
         print(f"            {f.observed}  ->  {f.remediation}")
 
 
-def main() -> None:
-    sub = os.environ.get("AZURE_SUBSCRIPTION_ID", "a0aabca8-6bd7-45f3-9b88-c425f646d07b")
-    rg = os.environ.get("TARGET_RG", "deploy-assess-rg")
-    cluster = os.environ.get("TARGET_CLUSTER", "deploy-assess-aks")
-    namespace = os.environ.get("TARGET_NAMESPACE", "kube-system")
-
-    findings = run(sub, rg, cluster, namespace)
-
+def report_findings(findings: list[Finding], label: str, *, interpret: bool = False) -> None:
+    """Optionally interpret, then print, persist, and diff a set of findings."""
     interpretation = None
-    if os.environ.get("INTERPRET") == "1":
+    if interpret:
         from .interpret import interpret_findings
 
         endpoint = os.environ.get(
@@ -52,7 +47,7 @@ def main() -> None:
         deployment = os.environ.get("FOUNDRY_DEPLOYMENT", "gpt-4.1")
         interpretation = interpret_findings(findings, endpoint, deployment)
 
-    path = save_findings(cluster, findings, interpretation)
+    path = save_findings(label, findings, interpretation)
 
     _print_summary(findings)
 
@@ -64,7 +59,7 @@ def main() -> None:
             print(f"  [{risk.get('priority', '?').upper()}] {risk.get('theme')}: {risk.get('why_it_matters')}")
             print(f"        evidence: {ids}")
 
-    previous = latest_previous(cluster, exclude=path)
+    previous = latest_previous(label, exclude=path)
     regressions = new_regressions(findings, previous)
     if regressions:
         print(f"\nNew regressions since last run ({len(regressions)}):")
@@ -72,7 +67,3 @@ def main() -> None:
             print(f"  - {f.id}: {f.observed}")
 
     print(f"\nSaved: {path}")
-
-
-if __name__ == "__main__":
-    main()

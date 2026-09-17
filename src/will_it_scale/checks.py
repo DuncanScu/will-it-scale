@@ -131,6 +131,34 @@ def evaluate_workloads(facts: WorkloadFacts) -> list[Finding]:
             )
         )
 
+        # Runtime health: only present when facts came from a live cluster.
+        if "pods" in d:
+            desired = d.get("replicas") or 0
+            ready = d.get("ready_replicas") or 0
+            pods = d.get("pods") or []
+            unready = [p for p in pods if not p.get("ready")]
+            reasons = sorted({p["reason"] for p in unready if p.get("reason")})
+            healthy = ready >= desired and not unready
+            detail = f"; {', '.join(reasons)}" if reasons else ""
+            findings.append(
+                Finding(
+                    id=f"k8s.deploy.{ns}.{name}.rollout",
+                    category="runtime health",
+                    resource=f"deployment/{base}",
+                    status=PASS if healthy else (FAIL if ready == 0 and desired > 0 else WARNING),
+                    description="Deployment has its desired number of ready pods.",
+                    desired=f"{desired}/{desired} pods ready",
+                    observed=f"{ready}/{desired} pods ready{detail}",
+                    severity=LOW if healthy else (HIGH if ready == 0 and desired > 0 else MEDIUM),
+                    remediation="Investigate pods that are not Ready (scheduling, image pull, crash loop, or resource limits).",
+                    evidence={
+                        "ready_replicas": ready,
+                        "available_replicas": d.get("available_replicas"),
+                        "pods": pods,
+                    },
+                )
+            )
+
         for c in d.get("containers", []):
             cname = c["name"]
             cbase = f"{base}/{cname}"

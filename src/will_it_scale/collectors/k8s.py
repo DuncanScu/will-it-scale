@@ -88,35 +88,73 @@ def _kube_api(subscription_id: str, resource_group: str, cluster_name: str) -> k
     return k8s_client.ApiClient(cfg)
 
 
+def _selector_matches(selector: dict[str, str] | None, labels: dict[str, str] | None) -> bool:
+    if not selector:
+        return False
+    labels = labels or {}
+    return all(labels.get(key) == value for key, value in selector.items())
+
+
+def _pod_summary(pod: Any) -> dict[str, Any]:
+    """Runtime status for one pod: phase, readiness, and why it isn't ready."""
+    status = pod.status
+    ready = False
+    reason = None
+    for cond in status.conditions or []:
+        if cond.type == "Ready":
+            ready = cond.status == "True"
+        if cond.type == "PodScheduled" and cond.status == "False":
+            reason = cond.reason or "Unschedulable"
+            if cond.message:
+                reason = f"{reason}: {cond.message}"
+    if reason is None:
+        for container in status.container_statuses or []:
+            waiting = getattr(container.state, "waiting", None)
+            if waiting and waiting.reason:
+                reason = waiting.reason
+                break
+    return {"name": pod.metadata.name, "phase": status.phase, "ready": ready, "reason": reason}
+
+
 def collect_workloads(
     subscription_id: str, resource_group: str, cluster_name: str, namespace: str
 ) -> WorkloadFacts:
-    """Data-plane read: Deployments, HPAs, PDBs in a namespace."""
+    """Data-plane read: Deployments (declared + runtime), HPAs, PDBs in a namespace."""
     api = _kube_api(subscription_id, resource_group, cluster_name)
     apps = k8s_client.AppsV1Api(api)
     autoscaling = k8s_client.AutoscalingV2Api(api)
     policy = k8s_client.PolicyV1Api(api)
+    core = k8s_client.CoreV1Api(api)
 
     facts = WorkloadFacts(namespace=namespace)
+    pods = core.list_namespaced_pod(namespace).items
 
     for d in apps.list_namespaced_deployment(namespace).items:
         containers = d.spec.template.spec.containers or []
-        facts.deployments.append(
-            {
-                "name": d.metadata.name,
-                "replicas": d.spec.replicas,
-                "containers": [
-                    {
-                        "name": c.name,
-                        "requests": (c.resources.requests if c.resources else None),
-                        "limits": (c.resources.limits if c.resources else None),
-                        "has_readiness_probe": c.readiness_probe is not None,
-                        "has_liveness_probe": c.liveness_probe is not None,
-                    }
-                    for c in containers
-                ],
-            }
-        )
+        selector = d.spec.selector.match_labels or {}
+        deployment = {
+            "name": d.metadata.name,
+            "replicas": d.spec.replicas,
+            "containers": [
+                {
+                    "name": c.name,
+                    "requests": (c.resources.requests if c.resources else None),
+                    "limits": (c.resources.limits if c.resources else None),
+                    "has_readiness_probe": c.readiness_probe is not None,
+                    "has_liveness_probe": c.liveness_probe is not None,
+                }
+                for c in containers
+            ],
+            # Runtime status (live only) — the manifest can't know these.
+            "ready_replicas": getattr(d.status, "ready_replicas", None) or 0,
+            "available_replicas": getattr(d.status, "available_replicas", None) or 0,
+            "pods": [
+                _pod_summary(p)
+                for p in pods
+                if _selector_matches(selector, p.metadata.labels)
+            ],
+        }
+        facts.deployments.append(deployment)
 
     for h in autoscaling.list_namespaced_horizontal_pod_autoscaler(namespace).items:
         facts.hpas.append(
