@@ -3,6 +3,9 @@ from pathlib import Path
 
 from agent_framework import Agent
 
+from will_it_scale.agents.application_performance_investigator import (
+    create_application_performance_investigator_agent,
+)
 from will_it_scale.agents.investigation_architect import (
     create_investigation_architect_agent,
 )
@@ -13,6 +16,9 @@ from will_it_scale.agents.kubernetes_investigator import (
 DEFAULT_MANIFEST = (
     Path(__file__).resolve().parents[2]
     / "test_data/sample_service/kubernetes/deployment.yaml"
+)
+DEFAULT_APPLICATION_SOURCE = (
+    Path(__file__).resolve().parents[2] / "test_data/sample_service/app.py"
 )
 StatusCallback = Callable[[str], None]
 REQUIREMENTS_PROMPT = """Before I investigate, what should this service support?
@@ -27,15 +33,21 @@ class AssessmentService:
     def __init__(
         self,
         manifest_path: Path = DEFAULT_MANIFEST,
+        application_source_path: Path = DEFAULT_APPLICATION_SOURCE,
         kubernetes_agent_factory: Callable[[], Agent] = (
             create_kubernetes_investigator_agent
+        ),
+        application_performance_agent_factory: Callable[[], Agent] = (
+            create_application_performance_investigator_agent
         ),
         architect_agent_factory: Callable[[], Agent] = (
             create_investigation_architect_agent
         ),
     ) -> None:
         self.manifest_path = manifest_path
+        self.application_source_path = application_source_path
         self._kubernetes_agent_factory = kubernetes_agent_factory
+        self._application_performance_agent_factory = application_performance_agent_factory
         self._architect_agent_factory = architect_agent_factory
         self._architect: Agent | None = None
         self._session = None
@@ -47,6 +59,8 @@ class AssessmentService:
     ) -> AsyncIterator[str]:
         self._set_status(on_status, "Reading Kubernetes configuration")
         manifest = self.manifest_path.read_text(encoding="utf-8")
+        self._set_status(on_status, "Reading application source")
+        application_source = self.application_source_path.read_text(encoding="utf-8")
 
         self._set_status(on_status, "Investigating scaling and availability risks")
         investigator = self._kubernetes_agent_factory()
@@ -68,16 +82,38 @@ class AssessmentService:
             + manifest
         )
 
+        self._set_status(on_status, "Investigating application performance risks")
+        application_investigator = self._application_performance_agent_factory()
+        application_investigation = await application_investigator.run(
+            """
+            Investigate the application source against the user's workload and reliability
+            requirements below. Return concise, evidence-backed findings for the Investigation
+            Architect. Identify algorithmic, database access, connection management, and request
+            path scalability risks. Cite the relevant functions or code patterns and call out any
+            unknowns. Do not claim that source inspection alone proves the service can handle the
+            requested workload.
+
+            User requirements:
+            """
+            + requirements
+            + """
+
+            Application source:
+            """
+            + application_source
+        )
+
         self._set_status(on_status, "Preparing the assessment")
         self._architect = self._architect_agent_factory()
         self._session = self._architect.create_session()
         async for update in self._architect.run(
             """
-            Compare the Kubernetes investigator's findings with the user's workload and reliability
-            requirements below. Produce a polished, user-facing Markdown assessment that is easy to
-            scan in a terminal. Identify the most likely first failure point, the most important
-            confirmed or handled concerns, unknowns, and next validation steps. Do not claim that
-            the service can handle the workload unless the evidence supports it.
+            Compare the Kubernetes and application-performance investigators' findings with the
+            user's workload and reliability requirements below. Produce a polished, user-facing
+            Markdown assessment that is easy to scan in a terminal. Identify the most likely first
+            failure point, the most important confirmed or handled concerns, unknowns, and next
+            validation steps. Do not claim that the service can handle the workload unless the
+            evidence supports it.
 
             Use this exact report structure:
 
@@ -114,7 +150,12 @@ class AssessmentService:
 
             Kubernetes investigator findings:
             """
-            + investigation.text,
+            + investigation.text
+            + """
+
+            Application performance investigator findings:
+            """
+            + application_investigation.text,
             stream=True,
             session=self._session,
         ):
