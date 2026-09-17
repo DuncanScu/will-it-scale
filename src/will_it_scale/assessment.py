@@ -15,10 +15,11 @@ from will_it_scale.agents.kubernetes_investigator import (
 
 DEFAULT_MANIFEST = (
     Path(__file__).resolve().parents[2]
-    / "test_data/sample_service/kubernetes/deployment.yaml"
+    / "samples/scale_street/k8s/constrained/deployment.yaml"
 )
 DEFAULT_APPLICATION_SOURCE = (
-    Path(__file__).resolve().parents[2] / "test_data/sample_service/app.py"
+    Path(__file__).resolve().parents[2]
+    / "samples/scale_street/src/scale_street/main.py"
 )
 StatusCallback = Callable[[str], None]
 REQUIREMENTS_PROMPT = """Before I investigate, what should this service support?
@@ -105,8 +106,11 @@ class AssessmentService:
             + requirements
             + """
 
-            The application entry point is app.py. Use the read_source_file tool to inspect it and
-            any other relevant Python files, only as needed.
+            The application entry point is main.py. Use the read_source_file tool to inspect it
+            and any other relevant Scale Street backend files, especially service.py, advisor.py,
+            config.py, and models.py, only as needed. Check for synchronous downstream calls,
+            unbounded request concurrency, missing timeouts or retries, process-local state,
+            background-task behavior, and missing application telemetry.
             """
         )
 

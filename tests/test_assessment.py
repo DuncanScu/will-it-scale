@@ -30,6 +30,16 @@ class FakeAgent:
 
 
 class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
+    def test_defaults_target_scale_street(self) -> None:
+        self.assertEqual(
+            AssessmentService().manifest_path,
+            Path("samples/scale_street/k8s/constrained/deployment.yaml").resolve(),
+        )
+        self.assertEqual(
+            AssessmentService().application_source_path,
+            Path("samples/scale_street/src/scale_street/main.py").resolve(),
+        )
+
     async def test_requirements_drive_investigation_report_and_follow_up(self) -> None:
         kubernetes_agent = FakeAgent(["Investigator findings"])
         application_agent = FakeAgent(["Application findings"])
@@ -74,6 +84,7 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(follow_up, "First second.")
         self.assertIn("read_manifest_file tool", kubernetes_agent.calls[0][0])
         self.assertIn("read_source_file tool", application_agent.calls[0][0])
+        self.assertIn("missing timeouts or retries", application_agent.calls[0][0])
         self.assertIn("250 RPS, 99.9% availability", architect.calls[0][0])
         self.assertIn("Investigator findings", architect.calls[0][0])
         self.assertIn("Application findings", architect.calls[0][0])

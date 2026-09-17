@@ -133,10 +133,10 @@ A hybrid pipeline is also a good long-term shape: deterministic analyzers collec
 This repository currently implements a narrow vertical slice:
 
 - `src/will_it_scale/tui.py` provides the Textual inline chat experience, splash screen, status updates, slash commands, cancellation, retry behavior, and follow-up conversation.
-- `src/will_it_scale/assessment.py` reads one Kubernetes manifest, invokes a Kubernetes investigator, and passes its findings plus user requirements to the Investigation Architect.
+- `src/will_it_scale/assessment.py` reads the constrained Scale Street Kubernetes manifest, invokes Kubernetes and application-performance investigators, and passes their findings plus user requirements to the Investigation Architect.
 - `src/will_it_scale/agents/investigation_architect.py` creates the Foundry-backed `InvestigationArchitect` agent using `gpt-4.1-mini` and Azure default credentials.
 - `src/will_it_scale/agents/kubernetes_investigator.py` contains the Kubernetes specialist agent.
-- `test_data/sample_service/` is the controlled sample service and deployment fixture.
+- `samples/scale_street/` is the controlled sample service and deployment fixture used by the CLI assessment flow.
 - `tests/` covers the assessment flow and TUI behavior.
 
 The current opening prompt asks for target throughput, latency and availability objectives, and traffic pattern or growth. The report is intentionally short, streamed, and limited to the most important concerns, unknowns, and next validation steps.
