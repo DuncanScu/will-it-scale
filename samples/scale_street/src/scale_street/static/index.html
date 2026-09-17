@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scale Street Portfolio Lab</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div class="brand">
+          <img
+            class="brand-logo"
+            src="/static/scale-street-logo.svg"
+            alt="A market blender mixing charts and rumor signals"
+          >
+          <div>
+            <p class="eyebrow">THE MARKET MIXER</p>
+            <h1>Scale Street</h1>
+            <p class="tagline">
+              Drop in a rumor. Mix in a portfolio. See what shakes out.
+            </p>
+          </div>
+        </div>
+        <div class="market-badge">
+          <span id="market-status">PRE-MARKET</span>
+          <small>Portfolio Lab</small>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <article class="panel portfolio-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">YOUR PAPER PORTFOLIO</p>
+              <h2>Build your positions</h2>
+            </div>
+            <span id="allocation-total" class="allocation-total">100%</span>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Portfolio name
+              <input id="portfolio-name" value="My Market Watchlist">
+            </label>
+            <label>
+              Investment style
+              <select id="risk-profile">
+                <option value="conservative">Conservative</option>
+                <option value="balanced" selected>Balanced</option>
+                <option value="growth">Growth</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="holdings" class="holdings"></div>
+          <button id="add-holding" class="secondary compact">
+            + Add position
+          </button>
+        </article>
+
+        <article class="panel rumor-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">LIVE MARKET CHATTER</p>
+              <h2>Rumor Mill</h2>
+            </div>
+            <span id="feed-status" class="live-indicator">
+              <i></i> Connecting
+            </span>
+          </div>
+          <p class="muted">
+            Select a signal while fictional market updates arrive in real time.
+          </p>
+          <div id="rumor-feed" class="rumor-feed"></div>
+        </article>
+      </section>
+
+      <section class="analysis-action panel">
+        <div>
+          <p class="section-kicker">SPECIALIST ANALYSIS</p>
+          <h2 id="selected-rumor-title">Choose a rumor to investigate</h2>
+          <p id="selected-rumor-details" class="muted">
+            Your specialist team will map the signal to your portfolio.
+          </p>
+        </div>
+        <button id="analyze" disabled>Investigate this signal →</button>
+      </section>
+
+      <section id="analysis-workspace" class="results-layout hidden">
+        <article class="panel workflow-panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">ANALYSIS ACTIVITY</p>
+              <h2>Specialist desk</h2>
+            </div>
+            <span id="analysis-state" class="status-pill">Queued</span>
+          </div>
+          <div id="analysis-stages" class="analysis-stages"></div>
+        </article>
+
+        <article class="panel report-panel">
+          <div id="report-placeholder" class="report-placeholder">
+            <div class="radar"></div>
+            <h2>Investigation in progress</h2>
+            <p>Findings will appear as the specialist desks complete their work.</p>
+          </div>
+          <div id="report" class="hidden">
+            <p class="section-kicker">HEDGEHOG'S BRIEFING</p>
+            <h2 id="report-headline">Portfolio impact report</h2>
+            <p id="executive-summary" class="executive-summary"></p>
+
+            <div class="score-grid">
+              <div>
+                <span>Risk score</span>
+                <strong id="risk-score">0</strong>
+              </div>
+              <div>
+                <span>Diversification</span>
+                <strong id="diversification-score">0</strong>
+              </div>
+              <div>
+                <span>Analysis confidence</span>
+                <strong id="confidence-score">0</strong>
+              </div>
+              <div>
+                <span>Direct exposure</span>
+                <strong id="exposure-score">0%</strong>
+              </div>
+            </div>
+
+            <h3>Holding impact</h3>
+            <div id="holding-impacts" class="holding-impacts"></div>
+
+            <h3>Scenario range</h3>
+            <div id="scenarios" class="scenarios"></div>
+
+            <div class="recommendation">
+              <span>🦔 Hedgehog Advisor</span>
+              <p id="recommendation"></p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">RECENT WORK</p>
+            <h2>Investigation history</h2>
+          </div>
+        </div>
+        <div id="history" class="history">
+          <p class="muted">Completed investigations will appear here.</p>
+        </div>
+      </section>
+
+      <footer>
+        All companies, signals, portfolios, and results are fictional.
+        Scale Street does not provide financial advice.
+      </footer>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

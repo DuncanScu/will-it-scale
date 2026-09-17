@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "namePrefix": {
+      "value": "scalestreet"
+    },
+    "aksVmSize": {
+      "value": "Standard_D2s_v6"
+    },
+    "acrSkuName": {
+      "value": "Basic"
+    },
+    "deployFoundryModel": {
+      "value": false
+    },
+    "foundryModelCapacity": {
+      "value": 1
+    }
+  }
+}
