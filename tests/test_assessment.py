@@ -44,7 +44,7 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
                 manifest_path=manifest,
                 application_source_path=application_source,
                 kubernetes_agent_factory=lambda: kubernetes_agent,
-                application_performance_agent_factory=lambda: application_agent,
+                application_performance_agent_factory=lambda _: application_agent,
                 architect_agent_factory=lambda: architect,
             )
 
@@ -64,7 +64,7 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report, "Short report")
         self.assertEqual(follow_up, "First second.")
         self.assertIn("250 RPS, 99.9% availability", kubernetes_agent.calls[0][0])
-        self.assertIn("def list_orders(): pass", application_agent.calls[0][0])
+        self.assertIn("read_source_file tool", application_agent.calls[0][0])
         self.assertIn("250 RPS, 99.9% availability", architect.calls[0][0])
         self.assertIn("Investigator findings", architect.calls[0][0])
         self.assertIn("Application findings", architect.calls[0][0])

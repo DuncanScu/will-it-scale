@@ -37,7 +37,7 @@ class AssessmentService:
         kubernetes_agent_factory: Callable[[], Agent] = (
             create_kubernetes_investigator_agent
         ),
-        application_performance_agent_factory: Callable[[], Agent] = (
+        application_performance_agent_factory: Callable[[Path], Agent] = (
             create_application_performance_investigator_agent
         ),
         architect_agent_factory: Callable[[], Agent] = (
@@ -59,8 +59,6 @@ class AssessmentService:
     ) -> AsyncIterator[str]:
         self._set_status(on_status, "Reading Kubernetes configuration")
         manifest = self.manifest_path.read_text(encoding="utf-8")
-        self._set_status(on_status, "Reading application source")
-        application_source = self.application_source_path.read_text(encoding="utf-8")
 
         self._set_status(on_status, "Investigating scaling and availability risks")
         investigator = self._kubernetes_agent_factory()
@@ -83,7 +81,9 @@ class AssessmentService:
         )
 
         self._set_status(on_status, "Investigating application performance risks")
-        application_investigator = self._application_performance_agent_factory()
+        application_investigator = self._application_performance_agent_factory(
+            self.application_source_path.parent
+        )
         application_investigation = await application_investigator.run(
             """
             Investigate the application source against the user's workload and reliability
@@ -98,9 +98,9 @@ class AssessmentService:
             + requirements
             + """
 
-            Application source:
+            The application entry point is app.py. Use the read_source_file tool to inspect it and
+            any other relevant Python files, only as needed.
             """
-            + application_source
         )
 
         self._set_status(on_status, "Preparing the assessment")
