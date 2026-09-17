@@ -5,8 +5,7 @@ from will_it_scale.tui import WillItScaleApp
 
 
 def main() -> None:
-    args = parse_args()
-    configure_logging(debug=args.debug)
+    configure_logging(debug=parse_args().debug)
     WillItScaleApp().run(inline=True, inline_no_clear=True)
 
 

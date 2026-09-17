@@ -137,6 +137,10 @@ Run the CLI:
 uv run will-it-scale
 ```
 
+The default interactive TUI also runs the Azure Scale Investigator during its
+initial assessment, alongside the Kubernetes and application-performance
+investigators.
+
 ### Run Scale Street locally
 
 ```shell

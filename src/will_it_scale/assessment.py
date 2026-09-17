@@ -6,6 +6,10 @@ from agent_framework import Agent
 from will_it_scale.agents.application_performance_investigator import (
     create_application_performance_investigator_agent,
 )
+from will_it_scale.agents.azure_scale_investigator import (
+    AzureScaleInvestigator,
+    create_azure_scale_investigator_agent,
+)
 from will_it_scale.agents.investigation_architect import (
     create_investigation_architect_agent,
 )
@@ -43,6 +47,9 @@ class AssessmentService:
         ] = (
             create_application_performance_investigator_agent
         ),
+        azure_investigator_agent_factory: Callable[
+            [Path, Callable[[str], None]], AzureScaleInvestigator
+        ] = create_azure_scale_investigator_agent,
         architect_agent_factory: Callable[[], Agent] = (
             create_investigation_architect_agent
         ),
@@ -51,6 +58,7 @@ class AssessmentService:
         self.application_source_path = application_source_path
         self._kubernetes_agent_factory = kubernetes_agent_factory
         self._application_performance_agent_factory = application_performance_agent_factory
+        self._azure_investigator_agent_factory = azure_investigator_agent_factory
         self._architect_agent_factory = architect_agent_factory
         self._architect: Agent | None = None
         self._session = None
@@ -114,13 +122,42 @@ class AssessmentService:
             """
         )
 
+        self._set_status(on_status, "Investigating Azure resources and telemetry")
+        source_parents = self.application_source_path.parents
+        project_directory = (
+            source_parents[3]
+            if len(source_parents) > 3
+            else self.application_source_path.parent
+        )
+        azure_investigator = self._azure_investigator_agent_factory(
+            project_directory,
+            lambda relative_path: self._set_status(
+                on_status, f"Read Azure project evidence: {relative_path}"
+            ),
+        )
+        azure_investigation = await azure_investigator.run(
+            """
+            Investigate the Azure scalability of this application against the user's workload
+            and reliability requirements below. Return concise, evidence-backed findings for the
+            Investigation Architect. Inspect local project evidence first, identify expected Azure
+            resources and scope, and distinguish configured evidence from unknown live properties.
+            Evaluate capacity, elasticity, resilience, state, concurrency, quotas, networking,
+            dependencies, and observability. Pay special attention to AKS capacity and workload
+            settings, synchronous Foundry calls, model quotas, and downstream bottlenecks.
+
+            User requirements:
+            """
+            + requirements
+        )
+
         self._set_status(on_status, "Preparing the assessment")
         self._architect = self._architect_agent_factory()
         self._session = self._architect.create_session()
         async for update in self._architect.run(
             """
-            Compare the Kubernetes and application-performance investigators' findings with the
-            user's workload and reliability requirements below. Produce a polished, user-facing
+            Compare the Kubernetes, application-performance, and Azure Scale Investigator findings
+            with the user's workload and reliability requirements below. Produce a polished,
+            user-facing
             Markdown assessment that is easy to scan in a terminal. Identify the most likely first
             failure point, the most important confirmed or handled concerns, unknowns, and next
             validation steps. Do not claim that the service can handle the workload unless the
@@ -166,7 +203,12 @@ class AssessmentService:
 
             Application performance investigator findings:
             """
-            + application_investigation.text,
+            + application_investigation.text
+            + """
+
+            Azure Scale Investigator findings:
+            """
+            + azure_investigation.text,
             stream=True,
             session=self._session,
         ):
