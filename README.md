@@ -223,18 +223,80 @@ The focused fallback templates are:
 App Service was not used in the FDPO subscription because its B1 worker quota
 was zero. See `samples/scale_street/TODO.md` for the remaining AKS-only work.
 
+## Deterministic assessment engine (`will_it_scale`)
+
+Alongside the investigation agents, `src/will_it_scale` is a grounded, deterministic
+assessment engine and CLI. It reads real Kubernetes state, applies coded checks
+(replica floors, requests/limits, health probes, autoscaling, disruption budgets,
+and pod rollout health), and can have Azure AI Foundry interpret the findings. The
+model only ever consumes the grounded findings as evidence — it cannot reach the
+cluster or invent facts. Read-only by design.
+
+### Foundry configuration
+
+Defaults point at a personal Azure AI Foundry project for now
+(`deploy-assess-foundry` / `deploy-assess-project`, model `gpt-4.1`). This is
+temporary — repoint with `FOUNDRY_PROJECT_ENDPOINT` and `FOUNDRY_MODEL` when access
+to the target subscription is available (see `src/will_it_scale/config.py`).
+
+### Provision infrastructure (Terraform)
+
+```shell
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars   # subscription IDs, target, model
+terraform init && terraform apply
+```
+
+Creates the read-only collector managed identity and RBAC, an optional throwaway
+AKS cluster (`create_test_aks = true`), and the Foundry account/model. Tear it all
+down with `terraform destroy`.
+
+### Run it
+
+Everything runs through the single `will-it-scale` command; flags take precedence
+over the `TARGET_*` / `ASSESS_SOURCE` environment variables:
+
+```shell
+uv run will-it-scale                                           # interactive TUI (agents)
+uv run will-it-scale --checks                                  # deterministic findings only
+uv run will-it-scale --checks --interpret                      # + Foundry interpretation
+uv run will-it-scale --checks --source live --namespace demo   # assess a live namespace
+```
+
+The interactive TUI captures your workload requirements, runs the checks, then has
+the agents reason over the grounded findings. Switch source mid-session with
+`/live <namespace>` and `/manifest`; each run announces the source and the
+deployments discovered there.
+
+### Access for local runs
+
+Running as your own identity needs **AKS RBAC Reader** on the cluster; `--interpret`
+also needs **Cognitive Services OpenAI User** on the Foundry account. Azure RBAC for
+Kubernetes caches decisions, so allow ~5 minutes after granting.
+
+### Output and tests
+
+Each run writes `findings/<label>/<timestamp>.json` (schema: `id`, `status`,
+`evidence`, `confidence`, `severity`, `remediation`) and diffs against the previous
+run for regressions. Run the deterministic suite with `uv run pytest`; it needs no
+cluster or Azure access.
+
 ## Repository structure
 
 ```text
-src/will_it_scale/             Investigation CLI
-samples/scale_street/          Financial-services demo application
-  architecture/SAD.md          Target-state architecture
-  infra/                       Azure Bicep deployment
-  k8s/constrained/             Intentionally constrained deployment
-  k8s/improved/                Recommended comparison deployment
-  load_tests/                  Opening-bell load generator
-  telemetry/                   Representative runtime evidence
-  TODO.md                      Remaining AKS deployment work
+.github/agents/                   Azure Scale Investigator custom agent
+agents/azure-scale-investigator/  Agent profile, checks, schemas, scripts, tests
+src/will_it_scale/                Investigation CLI + deterministic assessment engine
+infra/terraform/                  Read-only identity, RBAC, test AKS, Foundry (IaC)
+tests/                            Deterministic checks, manifest, CLI, TUI suites
+samples/scale_street/             Financial-services demo application
+  architecture/SAD.md             Target-state architecture
+  infra/                          Azure Bicep deployment
+  k8s/constrained/                Intentionally constrained deployment
+  k8s/improved/                   Recommended comparison deployment
+  load_tests/                     Opening-bell load generator
+  telemetry/                      Representative runtime evidence
+  TODO.md                         Remaining AKS deployment work
 ```
 
 ## Demo investigation
@@ -262,6 +324,8 @@ short assessment and accepts follow-up questions in the same conversation.
 
 Commands and controls:
 
+- `/live <namespace>` switches to a live cluster namespace and re-investigates.
+- `/manifest` switches back to the bundled manifest fixture.
 - `/help` shows the available commands.
 - `/clear` clears the visible transcript without resetting the conversation.
 - `/retry` restarts a failed or cancelled initial investigation.

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from dataclasses import dataclass
 from random import Random
 from time import monotonic
@@ -420,13 +421,15 @@ class WillItScaleApp(App[None]):
 
     def __init__(self, service: AssessmentService | None = None) -> None:
         super().__init__()
-        self.service = service or AssessmentService()
+        self.service = service or AssessmentService.from_env()
         self._started_at = monotonic()
         self._status_text = "Waiting for requirements"
         self._message_number = 0
         self._busy = False
         self._awaiting_requirements = False
         self._conversation_ready = False
+        self._welcomed = False
+        self._pending_target: str | None = None
 
     def compose(self) -> ComposeResult:
         yield BlenderIntro()
@@ -497,11 +500,25 @@ class WillItScaleApp(App[None]):
     def _scroll_to_end(self) -> None:
         self.query_one("#transcript", VerticalScroll).scroll_end(animate=False)
 
+    def _announce_target(self, summary: str) -> None:
+        self._pending_target = summary
+
     @work(exclusive=True, group="agent")
     async def request_requirements(self) -> None:
         self._started_at = monotonic()
         self._awaiting_requirements = False
         self._conversation_ready = False
+        if not self._welcomed:
+            self._welcomed = True
+            await self._add_message(
+                "System",
+                f"**will-it-scale** · assessing **{self.service.source_label}**.\n\n"
+                "**Commands:** `/live <namespace>` assess a live cluster namespace · "
+                "`/manifest` assess the bundled fixture · `/clear` · `/retry` · "
+                "`/help` · `/exit`.\n\n"
+                "**Launch flags:** `--source live --namespace <ns>`, `--checks`, "
+                "`--interpret` (run `will-it-scale --help` for all).",
+            )
         await self._add_message("Assistant", REQUIREMENTS_PROMPT)
         self._awaiting_requirements = True
         self.query_one("#prompt", Input).placeholder = (
@@ -520,6 +537,26 @@ class WillItScaleApp(App[None]):
         if command in {"exit", "quit", "/exit", "/quit"}:
             self.exit()
             return
+        if command.startswith("/live"):
+            parts = message.split()
+            namespace = parts[1] if len(parts) > 1 else os.environ.get("TARGET_NAMESPACE", "default")
+            self.service = AssessmentService.for_live(namespace)
+            await self._add_message(
+                "System",
+                f"Source set to **live** cluster, namespace `{namespace}`. "
+                "Answer the requirements to investigate it.",
+            )
+            self.request_requirements()
+            return
+        if command == "/manifest":
+            self.service = AssessmentService()
+            await self._add_message(
+                "System",
+                "Source set to the bundled **manifest** fixture. "
+                "Answer the requirements to investigate it.",
+            )
+            self.request_requirements()
+            return
         if command == "/retry":
             if not self._conversation_ready and not self._awaiting_requirements:
                 self.request_requirements()
@@ -535,8 +572,9 @@ class WillItScaleApp(App[None]):
             await self._add_message(
                 "System",
                 "**Commands:** `/clear` clears the transcript; `/retry` restarts a "
-                "failed investigation; `/exit` quits. Press **Esc** to cancel an "
-                "active response.",
+                "failed investigation; `/live <namespace>` assesses a live cluster "
+                "namespace; `/manifest` assesses the bundled fixture; `/exit` quits. "
+                "Press **Esc** to cancel an active response.",
             )
             return
         if self._awaiting_requirements:
@@ -557,12 +595,18 @@ class WillItScaleApp(App[None]):
     async def run_report(self, requirements: str) -> None:
         self._started_at = monotonic()
         self._set_busy(True, "Preparing the assessment")
+        self._pending_target = None
         response: ConversationMessage | None = None
         content = ""
         try:
             async for chunk in self.service.stream_report(
-                requirements, self._set_status
+                requirements, self._set_status, self._announce_target
             ):
+                if self._pending_target is not None:
+                    await self._add_message(
+                        "System", f"Assessing **{self._pending_target}**."
+                    )
+                    self._pending_target = None
                 content += chunk
                 if response is None:
                     response = await self._add_message("Assistant", content)

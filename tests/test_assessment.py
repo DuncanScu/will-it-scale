@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -83,7 +84,8 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
                 [chunk async for chunk in service.stream_follow_up("What next?")]
             )
 
-        self.assertEqual(report, "Short report")
+        self.assertTrue(report.startswith("Short report"))
+        self.assertIn("Deterministic findings saved to", report)
         self.assertEqual(follow_up, "First second.")
         self.assertIn("read_manifest_file tool", kubernetes_agent.calls[0][0])
         self.assertIn("read_source_file tool", application_agent.calls[0][0])
