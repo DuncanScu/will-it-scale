@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in. Same Entra tenant assumed.
+
+hub_subscription_id    = "a0aabca8-6bd7-45f3-9b88-c425f646d07b"
+target_subscription_id = "a0aabca8-6bd7-45f3-9b88-c425f646d07b"
+location               = "eastus"
+name_prefix            = "deploy-assess"
+
+# Full ARM resource ID of an EXISTING cluster to assess.
+# Leave "" and set create_test_aks = true to have Terraform build a test one.
+target_aks_id = ""
+
+# Spin up a throwaway AKS cluster to experiment against (same subscription).
+create_test_aks     = true
+test_aks_node_count = 1
+test_aks_vm_size    = "Standard_D2s_v3"
+
+# Optional: scope Kubernetes reads to one namespace instead of the whole cluster.
+aks_rbac_namespace = ""
+
+# Read vCPU/VM quotas at the target subscription scope.
+grant_subscription_reader = true
+
+# Optional: Cosmos DB account for RU signals. Leave "" to skip.
+cosmos_account_id = ""
+
+# Foundry model.
+deploy_foundry        = true
+foundry_model_name    = "gpt-4.1"
+foundry_model_version = "2025-04-14"

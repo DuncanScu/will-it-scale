@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,20 +44,27 @@ class AssessmentServiceTests(unittest.IsolatedAsyncioTestCase):
                 architect_agent_factory=lambda: architect,
             )
 
-            report = "".join(
-                [
-                    chunk
-                    async for chunk in service.stream_report(
-                        "250 RPS, 99.9% availability"
-                    )
-                ]
-            )
-            architect.responses = ["First ", "second."]
-            follow_up = "".join(
-                [chunk async for chunk in service.stream_follow_up("What next?")]
-            )
+            # Run inside the temp dir so persisted findings/ don't touch the repo.
+            cwd = os.getcwd()
+            os.chdir(directory)
+            try:
+                report = "".join(
+                    [
+                        chunk
+                        async for chunk in service.stream_report(
+                            "250 RPS, 99.9% availability"
+                        )
+                    ]
+                )
+                architect.responses = ["First ", "second."]
+                follow_up = "".join(
+                    [chunk async for chunk in service.stream_follow_up("What next?")]
+                )
+            finally:
+                os.chdir(cwd)
 
-        self.assertEqual(report, "Short report")
+        self.assertTrue(report.startswith("Short report"))
+        self.assertIn("Deterministic findings saved to", report)
         self.assertEqual(follow_up, "First second.")
         self.assertIn("250 RPS, 99.9% availability", kubernetes_agent.calls[0][0])
         self.assertIn("250 RPS, 99.9% availability", architect.calls[0][0])

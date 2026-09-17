@@ -1,0 +1,10 @@
+# Terraform state can contain secrets — never commit it.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Real variable values and plans.
+terraform.tfvars
+*.auto.tfvars
+tfplan

@@ -10,14 +10,18 @@ from will_it_scale.tui import (
 
 
 class FakeAssessmentService:
+    source_label = "manifest deployment.yaml"
+
     def __init__(self) -> None:
         self.requirements: list[str] = []
         self.follow_ups: list[str] = []
 
-    async def stream_report(self, requirements: str, on_status=None):
+    async def stream_report(self, requirements: str, on_status=None, on_evidence=None):
         self.requirements.append(requirements)
         if on_status is not None:
             on_status("Preparing the assessment")
+        if on_evidence is not None:
+            on_evidence("manifest deployment.yaml - deployments: order-service")
         yield "- Initial "
         await asyncio.sleep(0)
         yield "finding"
@@ -37,9 +41,8 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 30)) as pilot:
             await self.wait_until_ready(app)
             self.assertEqual(service.requirements, [])
-            self.assertIn(
-                "Before I investigate", app.query_one(ConversationMessage).content
-            )
+            messages = [m.content for m in app.query(ConversationMessage)]
+            self.assertTrue(any("Before I investigate" in c for c in messages))
             await pilot.press("escape")
             await pilot.click("#prompt")
             await pilot.press(*"250 RPS with 99.9% availability", "enter")
@@ -89,9 +92,9 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
         started = asyncio.Event()
 
         class SlowService(FakeAssessmentService):
-            async def stream_report(self, requirements: str, on_status=None):
+            async def stream_report(self, requirements: str, on_status=None, on_evidence=None):
                 started.set()
-                async for chunk in super().stream_report(requirements, on_status):
+                async for chunk in super().stream_report(requirements, on_status, on_evidence):
                     yield chunk
 
         app = WillItScaleApp(service=SlowService())
@@ -186,9 +189,9 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
         first_chunk = asyncio.Event()
 
         class DelayedService(FakeAssessmentService):
-            async def stream_report(self, requirements: str, on_status=None):
+            async def stream_report(self, requirements: str, on_status=None, on_evidence=None):
                 await first_chunk.wait()
-                async for chunk in super().stream_report(requirements, on_status):
+                async for chunk in super().stream_report(requirements, on_status, on_evidence):
                     yield chunk
 
         app = WillItScaleApp(service=DelayedService())
@@ -229,17 +232,70 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(len(app.query(ConversationMessage)), 0)
 
+    async def test_startup_welcome_lists_commands_and_flags(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            contents = [message.content for message in app.query(ConversationMessage)]
+            self.assertTrue(
+                any("/live" in c and "Launch flags" in c for c in contents),
+                "startup welcome should list commands and launch flags",
+            )
+
+    async def test_assessment_announces_source_and_deployments(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.click("#prompt")
+            await pilot.press(*"250 RPS", "enter")
+            await self.wait_until_ready(app)
+            contents = [message.content for message in app.query(ConversationMessage)]
+            self.assertTrue(
+                any("Assessing" in c and "deployments:" in c for c in contents),
+                "each investigation should announce the source and deployment names",
+            )
+
+    async def test_live_command_switches_source(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        fake_live = FakeAssessmentService()
+        fake_live.source_label = "live cluster deploy-assess-aks, namespace demo"
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.click("#prompt")
+            with patch(
+                "will_it_scale.tui.AssessmentService.for_live", return_value=fake_live
+            ) as for_live:
+                await pilot.press(*"/live demo", "enter")
+                await self.wait_until_ready(app)
+            for_live.assert_called_once_with("demo")
+            self.assertIs(app.service, fake_live)
+
+    async def test_manifest_command_switches_source(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.click("#prompt")
+            await pilot.press(*"/manifest", "enter")
+            await self.wait_until_ready(app)
+            from will_it_scale.assessment import AssessmentService as RealService
+
+            self.assertIsInstance(app.service, RealService)
+            self.assertIsNone(app.service.live_target)
+
     async def test_failed_investigation_can_be_retried(self) -> None:
         class FailsOnceService(FakeAssessmentService):
             def __init__(self) -> None:
                 super().__init__()
                 self.attempts = 0
 
-            async def stream_report(self, requirements: str, on_status=None):
+            async def stream_report(self, requirements: str, on_status=None, on_evidence=None):
                 self.attempts += 1
                 if self.attempts == 1:
                     raise RuntimeError("temporary failure")
-                async for chunk in super().stream_report(requirements, on_status):
+                async for chunk in super().stream_report(requirements, on_status, on_evidence):
                     yield chunk
 
         service = FailsOnceService()
