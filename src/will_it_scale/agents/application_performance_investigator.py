@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from agent_framework import Agent, tool
@@ -7,11 +8,17 @@ from azure.identity import DefaultAzureCredential
 from will_it_scale.tools.application_source import read_application_source_file
 
 
-def create_application_performance_investigator_agent(source_root: Path) -> Agent:
+def create_application_performance_investigator_agent(
+    source_root: Path,
+    on_file_read: Callable[[str], None] | None = None,
+) -> Agent:
     @tool
     def read_source_file(relative_path: str) -> str:
         """Read a Python source file relative to the configured application source directory."""
-        return read_application_source_file(source_root, relative_path)
+        content = read_application_source_file(source_root, relative_path)
+        if on_file_read is not None:
+            on_file_read(relative_path)
+        return content
 
     return Agent(
         client=FoundryChatClient(

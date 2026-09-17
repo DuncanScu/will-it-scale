@@ -18,6 +18,7 @@ class FakeAssessmentService:
         self.requirements.append(requirements)
         if on_status is not None:
             on_status("Preparing the assessment")
+            on_status("Read application source: app.py")
         yield "- Initial "
         await asyncio.sleep(0)
         yield "finding"
@@ -169,8 +170,15 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 service.requirements, ["250 RPS with 99.9% availability"]
             )
-            self.assertIn("Initial finding", messages[-1].content)
+            assistant_messages = [
+                message for message in messages if message.role == "Assistant"
+            ]
+            self.assertIn("Initial finding", assistant_messages[-1].content)
             self.assertTrue(app._conversation_ready)
+            self.assertIn(
+                "Read application source: `app.py`",
+                [message.content for message in messages],
+            )
 
             await pilot.press(*"What next?", "enter")
             await self.wait_until_ready(app)
@@ -211,7 +219,12 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
 
             first_chunk.set()
             await self.wait_until_ready(app)
-            self.assertIn("Initial finding", app.query(ConversationMessage)[-1].content)
+            assistant_messages = [
+                message
+                for message in app.query(ConversationMessage)
+                if message.role == "Assistant"
+            ]
+            self.assertIn("Initial finding", assistant_messages[-1].content)
 
     async def test_slash_commands(self) -> None:
         app = WillItScaleApp(service=FakeAssessmentService())

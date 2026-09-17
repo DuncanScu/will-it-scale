@@ -37,7 +37,9 @@ class AssessmentService:
         kubernetes_agent_factory: Callable[[], Agent] = (
             create_kubernetes_investigator_agent
         ),
-        application_performance_agent_factory: Callable[[Path], Agent] = (
+        application_performance_agent_factory: Callable[
+            [Path, Callable[[str], None]], Agent
+        ] = (
             create_application_performance_investigator_agent
         ),
         architect_agent_factory: Callable[[], Agent] = (
@@ -82,7 +84,10 @@ class AssessmentService:
 
         self._set_status(on_status, "Investigating application performance risks")
         application_investigator = self._application_performance_agent_factory(
-            self.application_source_path.parent
+            self.application_source_path.parent,
+            lambda relative_path: self._set_status(
+                on_status, f"Read application source: {relative_path}"
+            ),
         )
         application_investigation = await application_investigator.run(
             """
