@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+samples/scale_street/reports/
 
 # Translations
 *.mo
