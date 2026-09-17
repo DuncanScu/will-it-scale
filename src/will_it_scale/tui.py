@@ -1,4 +1,6 @@
 import asyncio
+from dataclasses import dataclass
+from random import Random
 from time import monotonic
 
 from rich.text import Text
@@ -15,6 +17,23 @@ class BlenderIntro(Static):
     FRAME_COUNT = 48
     RESOURCES = ("[POD]", "<SVC>", "{DEPLOY}", "[NODE]", "<INGRESS>", "{HPA}", "[PVC]", "{CONFIG}")
     COLORS = ("#65b5ff", "#72c4ba", "#f0a45d")
+    BLENDER = (
+        "   .-----------.   ",
+        "   |           |==.",
+        "   |           |  |",
+        "    \\         /==='",
+        "     \\_______/     ",
+        "     /=======\\     ",
+        "    |   (O)   |    ",
+        "    |_________|    ",
+    )
+    COMPACT_BLENDER = (
+        "   |           |==.",
+        "   |           |__|",
+        "    \\_________/    ",
+        "    |   (O)   |    ",
+        "    |_________|    ",
+    )
 
     def __init__(self) -> None:
         super().__init__(id="blender-intro")
@@ -56,25 +75,8 @@ class BlenderIntro(Static):
                         styles[row][column + offset] = style
 
         center = width // 2
-        blender = (
-            "   .-----------.   ",
-            "   |           |==.",
-            "   |           |  |",
-            "    \\         /===\u0027",
-            "     \\_______/     ",
-            "     /=======\\     ",
-            "    |   (O)   |    ",
-            "    |_________|    ",
-        )
         compact = height < 11
-        if compact:
-            blender = (
-                "   |           |==.",
-                "   |           |__|",
-                "    \\_________/    ",
-                "    |   (O)   |    ",
-                "    |_________|    ",
-            )
+        blender = self.COMPACT_BLENDER if compact else self.BLENDER
         fall_height = max(1, min(8, height - len(blender)))
         top = max(0, (height - fall_height - len(blender)) // 2)
         for row, line in enumerate(blender):
@@ -98,6 +100,156 @@ class BlenderIntro(Static):
         if not compact:
             draw(center - 2, top + fall_height + 3, blade, "bold #72c4ba")
         draw(center, top + fall_height + (3 if compact else 6), "o" if self.frame % 2 else "O", "bold #f0a45d")
+
+        output = Text(no_wrap=True, overflow="crop")
+        for row in range(height):
+            for column in range(width):
+                output.append(canvas[row][column], style=styles[row][column])
+            if row < height - 1:
+                output.append("\n")
+        return output
+
+
+@dataclass
+class FallingResource:
+    column: int
+    row: float
+    label: str
+    color: str
+
+
+class BlenderGame(Static, can_focus=True):
+    TICK = 0.05
+
+    def __init__(self) -> None:
+        super().__init__(id="blender-game", classes="hidden")
+        self.random = Random()
+        self.resources: list[FallingResource] = []
+        self.score = 0
+        self.lives = 3
+        self.blender_column = 0
+        self.paused = False
+        self.spawn_in = 0.0
+        self.blend_frames = 0
+
+    @property
+    def blender(self) -> tuple[str, ...]:
+        return BlenderIntro.COMPACT_BLENDER if self.size.height < 22 else BlenderIntro.BLENDER
+
+    @property
+    def catch_row(self) -> int:
+        return self.size.height - len(self.blender)
+
+    @property
+    def playable(self) -> bool:
+        return self.size.width >= 24 and self.size.height >= 12
+
+    def on_mount(self) -> None:
+        self.game_timer = self.set_interval(self.TICK, self.advance, pause=True)
+
+    def start(self) -> None:
+        self.remove_class("hidden")
+        self.restart()
+        self.game_timer.resume()
+        self.focus()
+        self.call_after_refresh(self.center_blender)
+
+    def center_blender(self) -> None:
+        self.blender_column = max(0, (self.size.width - 19) // 2)
+        self.refresh()
+
+    def restart(self) -> None:
+        self.resources.clear()
+        self.score = 0
+        self.lives = 3
+        self.paused = False
+        self.spawn_in = 0.0
+        self.blend_frames = 0
+        self.center_blender()
+
+    def close(self) -> None:
+        self.game_timer.pause()
+        self.add_class("hidden")
+        self.resources.clear()
+
+    def on_resize(self) -> None:
+        self.blender_column = min(self.blender_column, max(0, self.size.width - 19))
+        for resource in self.resources:
+            resource.column = max(0, min(resource.column, self.size.width - len(resource.label)))
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key not in {"left", "right", "r", "space"}:
+            return
+        event.stop()
+        event.prevent_default()
+        if event.key == "r":
+            self.restart()
+        elif event.key == "space" and self.lives:
+            self.paused = not self.paused
+        elif not self.paused and self.lives and self.playable:
+            step = -3 if event.key == "left" else 3
+            self.blender_column = max(0, min(self.size.width - 19, self.blender_column + step))
+        self.refresh()
+
+    def advance(self) -> None:
+        if not self.display or self.paused or not self.lives or not self.playable:
+            return
+        self.blend_frames = max(0, self.blend_frames - 1)
+        speed = min(16.0, 6.0 + self.score / 60)
+        remaining = []
+        for resource in self.resources:
+            resource.row += speed * self.TICK
+            if resource.row >= self.catch_row:
+                center = resource.column + len(resource.label) // 2
+                if self.blender_column + 4 <= center <= self.blender_column + 14:
+                    self.score += 10
+                    self.blend_frames = 8
+                else:
+                    self.lives -= 1
+                    if not self.lives:
+                        self.resources.clear()
+                        self.refresh()
+                        return
+            else:
+                remaining.append(resource)
+        self.resources = remaining
+        self.spawn_in -= self.TICK
+        if self.spawn_in <= 0:
+            label = self.random.choice(BlenderIntro.RESOURCES)
+            self.resources.append(FallingResource(
+                self.random.randint(0, self.size.width - len(label)),
+                3.0, label, self.random.choice(BlenderIntro.COLORS),
+            ))
+            self.spawn_in = max(1.2, 2.4 - self.score / 500)
+        self.refresh()
+
+    def render(self) -> Text:
+        width = max(1, self.size.width)
+        height = max(1, self.size.height)
+        canvas = [[" " for _ in range(width)] for _ in range(height)]
+        styles = [["" for _ in range(width)] for _ in range(height)]
+
+        def draw(column: int, row: int, text: str, style: str) -> None:
+            if 0 <= row < height:
+                for offset, character in enumerate(text):
+                    if 0 <= column + offset < width:
+                        canvas[row][column + offset] = character
+                        styles[row][column + offset] = style
+
+        if not self.playable:
+            draw(0, 0, "Terminal too small", "bold #f0a45d")
+            draw(0, 1, "Minimum: 24 x 12", "#b9b3a9")
+        else:
+            draw(1, 0, f"Score {self.score}  Lives {self.lives}", "bold #f0a45d")
+            status = "GAME OVER" if not self.lives else "PAUSED" if self.paused else "KUBE BLENDER"
+            draw(1, 1, status, "bold #72c4ba")
+            for resource in self.resources:
+                draw(resource.column, int(resource.row), resource.label, resource.color)
+            for row, line in enumerate(self.blender):
+                draw(self.blender_column, self.catch_row + row, line, "bold #b9b3a9")
+            if self.blend_frames:
+                swirl = "~ * + ~" if self.blend_frames % 2 else "+ ~ * +"
+                draw(self.blender_column + 6, self.catch_row + 1, swirl, "bold #65b5ff")
 
         output = Text(no_wrap=True, overflow="crop")
         for row in range(height):
@@ -156,7 +308,7 @@ class WillItScaleApp(App[None]):
         scrollbar-background: #242321;
     }
 
-    #blender-intro {
+    #blender-intro, #blender-game {
         height: 1fr;
         overflow: hidden;
     }
@@ -278,6 +430,7 @@ class WillItScaleApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield BlenderIntro()
+        yield BlenderGame()
         with Vertical(id="shell", classes="hidden"):
             yield Static("◆ WILL IT SCALE?", id="brand")
             yield VerticalScroll(id="transcript")
@@ -366,6 +519,10 @@ class WillItScaleApp(App[None]):
             return
         if command == "/clear":
             await self.action_clear()
+            return
+        if command == "/game":
+            self.query_one("#shell").add_class("hidden")
+            self.query_one(BlenderGame).start()
             return
         if command == "/help":
             await self._add_message(
@@ -456,6 +613,12 @@ class WillItScaleApp(App[None]):
         await transcript.remove_children()
 
     def action_cancel(self) -> None:
+        game = self.query_one(BlenderGame)
+        if game.display:
+            game.close()
+            self.query_one("#shell").remove_class("hidden")
+            self.query_one("#prompt", Input).focus()
+            return
         intro = self.query_one(BlenderIntro)
         if intro.display:
             intro.finish()

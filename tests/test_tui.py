@@ -4,7 +4,9 @@ from unittest.mock import PropertyMock, patch
 
 from textual.drivers.headless_driver import HeadlessDriver
 
-from will_it_scale.tui import BlenderIntro, ConversationMessage, WillItScaleApp
+from will_it_scale.tui import (
+    BlenderGame, BlenderIntro, ConversationMessage, FallingResource, WillItScaleApp,
+)
 
 
 class FakeAssessmentService:
@@ -257,6 +259,159 @@ class WillItScaleAppTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(service.attempts, 2)
             self.assertTrue(app._conversation_ready)
+
+    async def test_game_command_controls_and_return_to_chat(self) -> None:
+        service = FakeAssessmentService()
+        app = WillItScaleApp(service=service)
+        async with app.run_test(size=(60, 20)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            messages = [message.content for message in app.query(ConversationMessage)]
+            await pilot.press(*"/game", "enter")
+            game = app.query_one(BlenderGame)
+            game.game_timer.pause()
+            self.assertTrue(game.display)
+            self.assertFalse(app.query_one("#shell").display)
+            self.assertIs(app.focused, game)
+            self.assertEqual(service.requirements, [])
+            self.assertEqual(service.follow_ups, [])
+            column = game.blender_column
+            await pilot.press("left")
+            self.assertEqual(game.blender_column, column - 3)
+            await pilot.press("right")
+            self.assertEqual(game.blender_column, column)
+            await pilot.press("space")
+            self.assertTrue(game.paused)
+            game.advance()
+            await pilot.press("left")
+            self.assertEqual(game.blender_column, column)
+            await pilot.press("space")
+            self.assertFalse(game.paused)
+            await pilot.press("escape")
+            self.assertFalse(game.display)
+            self.assertTrue(app.query_one("#shell").display)
+            self.assertIs(app.focused, app.query_one("#prompt"))
+            self.assertEqual(messages, [message.content for message in app.query(ConversationMessage)])
+            await pilot.press(*"250 RPS", "enter")
+            await self.wait_until_ready(app)
+            self.assertEqual(service.requirements, ["250 RPS"])
+            await pilot.press(*"/game", "enter")
+            game.game_timer.pause()
+            self.assertTrue(game.display)
+            self.assertEqual(game.score, 0)
+            self.assertEqual(game.lives, 3)
+            await pilot.press("escape")
+            score = game.score
+            game.advance()
+            self.assertEqual(game.score, score)
+            self.assertEqual(game.resources, [])
+            await pilot.press(*"What next?", "enter")
+            await self.wait_until_ready(app)
+            self.assertEqual(service.follow_ups, ["What next?"])
+
+    async def test_game_catches_misses_and_restart(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(60, 20)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.press(*"/game", "enter")
+            game = app.query_one(BlenderGame)
+            game.game_timer.pause()
+            game.spawn_in = 100
+            game.resources = [FallingResource(game.blender_column + 7, game.catch_row - 0.01, "[POD]", "red")]
+            game.advance()
+            self.assertEqual(game.score, 10)
+            self.assertEqual(game.lives, 3)
+            self.assertEqual(game.resources, [])
+            for lives in (2, 1, 0):
+                game.resources = [FallingResource(0, game.catch_row - 0.01, "[POD]", "red")]
+                game.advance()
+                self.assertEqual(game.lives, lives)
+            self.assertIn("GAME OVER", game.render().plain)
+            game.advance()
+            self.assertEqual(game.lives, 0)
+            await pilot.press("r")
+            self.assertEqual(game.score, 0)
+            self.assertEqual(game.lives, 3)
+            self.assertEqual(game.resources, [])
+
+    async def test_game_faster_falls_with_spaced_spawns(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        async with app.run_test(size=(120, 40)) as pilot:
+            await self.wait_until_ready(app)
+            await pilot.press("escape")
+            await pilot.press(*"/game", "enter")
+            game = app.query_one(BlenderGame)
+            game.game_timer.pause()
+            for score, speed, interval in ((0, 6.0, 2.4), (300, 11.0, 1.8), (1200, 16.0, 1.2)):
+                with self.subTest(score=score):
+                    game.restart()
+                    game.score = score
+                    game.advance()
+                    resource = game.resources[0]
+                    self.assertAlmostEqual(game.spawn_in, interval)
+                    row = resource.row
+                    game.advance()
+                    self.assertAlmostEqual(resource.row - row, speed * game.TICK)
+                    for _ in range(18):
+                        game.advance()
+                    self.assertEqual(len(game.resources), 1)
+                    for _ in range(round(interval / game.TICK) - 19 + 1):
+                        game.advance()
+                    self.assertEqual(len(game.resources), 2)
+
+    async def test_game_inline_layout_resize_and_movement_bounds(self) -> None:
+        app = WillItScaleApp(service=FakeAssessmentService())
+        with patch.object(HeadlessDriver, "is_inline", new_callable=PropertyMock, return_value=True):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await self.wait_until_ready(app)
+                await pilot.press("escape")
+                await pilot.press(*"/game", "enter")
+                game = app.query_one(BlenderGame)
+                game.game_timer.pause()
+                for width, height in ((120, 40), (60, 20), (32, 16), (24, 14)):
+                    with self.subTest(size=(width, height)):
+                        await pilot.resize_terminal(width, height)
+                        self.assertEqual(game.region, app.screen.content_region)
+                        self.assertTrue(game.playable)
+                        game.blender_column = 0
+                        await pilot.press("left")
+                        self.assertEqual(game.blender_column, 0)
+                        game.blender_column = width - 19
+                        await pilot.press("right")
+                        self.assertEqual(game.blender_column, width - 19)
+                        frame = game.render().plain
+                        self.assertIn("|_________|", frame)
+                        self.assertEqual(len(frame.splitlines()), game.size.height)
+                        self.assertTrue(all(len(line) == game.size.width for line in frame.splitlines()))
+
+                game.resources.clear()
+                game.spawn_in = 0
+                game.advance()
+                self.assertEqual(len(game.resources), 1)
+                resource = game.resources[0]
+                self.assertIn(resource.label, BlenderIntro.RESOURCES)
+                self.assertGreaterEqual(resource.column, 0)
+                self.assertLessEqual(resource.column + len(resource.label), game.size.width)
+                row = resource.row
+                game.advance()
+                self.assertGreater(resource.row, row)
+                await pilot.press("space")
+                row = resource.row
+                game.advance()
+                self.assertEqual(resource.row, row)
+                await pilot.press("space")
+                await pilot.resize_terminal(18, 8)
+                self.assertFalse(game.playable)
+                self.assertIn("Terminal too small", game.render().plain)
+                game.advance()
+                self.assertEqual(resource.row, row)
+                await pilot.resize_terminal(60, 20)
+                self.assertTrue(game.playable)
+                game.advance()
+                self.assertGreater(resource.row, row)
+                await pilot.press("escape")
+                self.assertIs(app.focused, app.query_one("#prompt"))
 
 
 if __name__ == "__main__":
