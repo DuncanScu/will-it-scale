@@ -4,21 +4,7 @@ from agent_framework import Agent, tool
 from agent_framework.foundry import FoundryChatClient
 from azure.identity import DefaultAzureCredential
 
-
-def read_application_source_file(source_root: Path, relative_path: str) -> str:
-    source_root = source_root.resolve()
-    source_path = (source_root / relative_path).resolve()
-    try:
-        source_path.relative_to(source_root)
-    except ValueError as error:
-        raise ValueError("The requested file must be inside the application source directory") from error
-
-    if source_path.suffix != ".py" or not source_path.is_file():
-        raise ValueError("The requested file must be an existing Python source file")
-    if source_path.stat().st_size > 100_000:
-        raise ValueError("The requested file exceeds the 100 KB read limit")
-
-    return source_path.read_text(encoding="utf-8")
+from will_it_scale.tools.application_source import read_application_source_file
 
 
 def create_application_performance_investigator_agent(source_root: Path) -> Agent:

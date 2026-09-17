@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from will_it_scale.agents.application_performance_investigator import (
+from will_it_scale.tools.application_source import (
     read_application_source_file,
 )
 
