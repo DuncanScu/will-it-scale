@@ -1,202 +1,319 @@
-# will-it-scale
+# Will It Scale?
 
-A read-only **deployment assessment agent** for AKS. It reconciles what *should* be
-running (replica floors, resource limits, health probes, autoscaling, disruption
-budgets) against what *is* running, and produces findings for human review. It
-recommends changes; it never deploys them.
+An evidence-driven scalability investigation built with Microsoft Agent
+Framework and Microsoft Foundry.
 
-> **Status:** experimental prototype. Validated end-to-end against a throwaway AKS
-> cluster and the `test_data/sample_service` fixture. Read-only by design.
+The project combines specialist checkers for application source, architecture,
+Microsoft Foundry, AKS, Azure resources, and telemetry. An Investigation
+Architect correlates their findings to answer:
 
-## How it works
+> Given the expected workload and the available evidence, what is most likely
+> to prevent this system from scaling?
 
-Two layers keep the output trustworthy:
+## Scale Street demo
 
-1. **Deterministic collectors + checks** gather grounded facts from the cluster and
-   evaluate them into findings (`pass` / `warning` / `fail`) with evidence,
-   severity, and remediation. This is the source of truth.
-2. **AI reasoning (Azure AI Foundry)** consumes those grounded findings. Two
-   front-ends build on them:
-   - an **interactive investigation CLI** (`will-it-scale`) that captures workload
-     requirements, then runs an investigator + architect agent pair over the
-     grounded findings to stream a conversational scalability assessment;
-   - a **deterministic runner** (`will_it_scale.assess`) with an optional
-     interpretation pass that prioritizes findings.
+[`samples/scale_street`](samples/scale_street) contains **Scale Street**, a
+financial-services themed FastAPI application designed to exercise the
+investigation agents. It simulates paper-portfolio analysis during an
+opening-bell traffic spike.
 
-   The model consumes the grounded findings as evidence — it does not replace them,
-   and cannot reach the cluster or invent facts.
+The demo deliberately includes explainable scalability constraints:
 
-Access is via a read-only **managed identity**: Azure RBAC for the control plane,
-Azure RBAC for Kubernetes for the data plane, and `Cognitive Services OpenAI User`
-for the model. See the architecture diagram in [notes.md](notes.md).
+- Synchronous Microsoft Agent Framework calls to a Foundry model.
+- No queue or back-pressure boundary.
+- Runtime recommendation history held in pod memory.
+- A single application replica and single-node AKS cluster.
+- No HPA or Pod Disruption Budget in the constrained deployment.
+- Drift between the target-state SAD and the deployed configuration.
 
-## Azure AI Foundry configuration
+The sample also includes an improved Kubernetes configuration, a synthetic
+telemetry capture, and a load generator so the agents can compare intended
+architecture, deployed state, source code, and runtime behavior.
 
-The AI features use an Azure AI Foundry project. Defaults point at a **personal
-subscription** for now:
+## Will It Scale? architecture
 
-- Project: `deploy-assess-foundry` / `deploy-assess-project`
-- Model: `gpt-4.1`
+The user begins with an interview that captures the target workload, current
+scale, known concerns, critical journeys, and evidence locations. The
+Investigation Architect then delegates read-only inspection to specialist
+checkers and correlates their evidence into one assessment.
 
-> **This is temporary and will change.** The project currently lives in a personal
-> subscription because access to the target team's subscription isn't available yet.
-> When it is, repoint the agents by setting `FOUNDRY_PROJECT_ENDPOINT` and
-> `FOUNDRY_MODEL` — no code change needed
-> (see [src/will_it_scale/config.py](src/will_it_scale/config.py)).
+```mermaid
+flowchart LR
+    User["Engineer or TPM"] --> Interview["Discovery interview"]
+    Interview --> Brief["Workload target<br/>Concern ledger<br/>Evidence locations"]
+    Brief --> Architect["Investigation Architect<br/>Microsoft Agent Framework"]
 
-## Layout
+    Architect --> Foundry["Foundry checker"]
+    Architect --> AKS["AKS checker"]
+    Architect --> Azure["Azure resource checker"]
+    Architect --> Source["Source-code checker"]
+    Architect --> SAD["Architecture / SAD checker"]
+    Architect --> Telemetry["Telemetry checker"]
 
-```
-infra/terraform/            # identity, read-only RBAC, test AKS, Foundry (IaC)
-src/will_it_scale/
-  collectors/k8s.py         # reads workload facts from a live cluster
-  collectors/manifest.py    # parses a manifest file into the same facts
-  checks.py                 # deterministic rules -> findings
-  interpret.py              # Foundry interpretation for the deterministic runner
-  findings_store.py         # saves runs to findings/<label>/<timestamp>.json
-  assess.py                 # deterministic runner: collect -> check -> (interpret) -> save
-  agents/                   # investigator + architect agents (agent-framework)
-  assessment.py             # orchestration: grounded findings -> agents -> report
-  tui.py                    # interactive terminal UI (will-it-scale)
-  config.py                 # Foundry endpoint/model (env-overridable)
-findings/                   # saved assessment runs (JSON, git-ignored)
-test_data/sample_service/   # deliberately-flawed demo app used as a fixture
-tests/                      # pytest suites (checks, manifest, assessment, tui)
+    Foundry --> Evidence["Normalized evidence"]
+    AKS --> Evidence
+    Azure --> Evidence
+    Source --> Evidence
+    SAD --> Evidence
+    Telemetry --> Evidence
+
+    Evidence --> Architect
+    Architect --> Report["Scalability verdict<br/>Confidence<br/>What fails first<br/>Recommendations"]
 ```
 
-## Prerequisites
+Each checker should return a common evidence shape containing the observation,
+source reference, impact, recommendation, and confidence. This allows the
+architect to identify agreement and contradictions across system layers rather
+than producing independent summaries.
 
-- [uv](https://docs.astral.sh/uv/), Terraform, and the Azure CLI (`az`)
-- `az login` with rights to create resources and role assignments
-- Install dependencies:
+## Scale Street runtime architecture
 
-  ```shell
-  uv sync
-  ```
+Scale Street is deployed to AKS and uses Microsoft Agent Framework with a
+Microsoft Foundry project. The default hackathon infrastructure is deliberately
+constrained so the checkers have meaningful evidence to discover.
 
-## Provision infrastructure
+```mermaid
+flowchart TB
+    Browser["Scale Street dashboard"] --> LB["Azure Load Balancer"]
+    LoadTest["Opening-bell load generator"] --> LB
+
+    subgraph RG["ScaleStreet_RG"]
+        subgraph AKS["AKS: scalestreet-aks"]
+            Pod["Scale Street FastAPI pod<br/>1 replica in constrained profile"]
+            Memory["In-process recommendation history"]
+            Pod --> Memory
+        end
+
+        ACR["Azure Container Registry"]
+        Foundry["Microsoft Foundry project"]
+        Model["gpt-5-mini deployment"]
+        Identity["User-assigned managed identity"]
+        AppInsights["Application Insights"]
+        Logs["Log Analytics workspace"]
+
+        LB --> Pod
+        ACR -. "container image" .-> Pod
+        Pod -->|"Agent Framework FoundryChatClient"| Foundry
+        Foundry --> Model
+        Identity -. "workload identity" .-> Pod
+        Identity -. "Azure OpenAI User" .-> Foundry
+        Pod -. "requests, dependencies, errors" .-> AppInsights
+        AppInsights --> Logs
+    end
+```
+
+### Constrained deployment
+
+```mermaid
+flowchart LR
+    Requests["Opening-bell requests"] --> Pod["One FastAPI pod"]
+    Pod --> State["Unbounded in-process history"]
+    Pod --> Agent["Synchronous Foundry call"]
+    Agent --> Quota["Low model quota"]
+    Quota --> Throttle["HTTP 429 and latency growth"]
+
+    Node["One AKS node"] --> Pod
+    NoHPA["No HPA"] -.-> Pod
+    NoPDB["No PDB"] -.-> Pod
+```
+
+The improved Kubernetes manifests demonstrate the intended remediation:
+multiple replicas, resource requests and limits, topology spreading, a Pod
+Disruption Budget, and Horizontal Pod Autoscaling. A production design would
+also introduce a durable queue, external state, caching, and bounded Foundry
+concurrency.
+
+## Development
+
+Install the project and its development dependencies:
 
 ```shell
-cd infra/terraform
-cp terraform.tfvars.example terraform.tfvars   # set subscription IDs, target, model
-terraform init
-terraform apply
+uv sync
 ```
 
-This creates the collector managed identity, its read-only role assignments, an
-optional throwaway AKS cluster (`create_test_aks = true`), and the Foundry account +
-model deployment. Tear everything down with `terraform destroy`.
-
-## Run the assessment
-
-Two front-ends share the same deterministic evidence engine. Both are configured
-through environment variables (defaults shown):
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `AZURE_SUBSCRIPTION_ID` | — | Subscription of the target cluster |
-| `TARGET_RG` | `deploy-assess-rg` | Resource group |
-| `TARGET_CLUSTER` | `deploy-assess-aks` | AKS cluster name |
-| `TARGET_NAMESPACE` | `kube-system` | Namespace to assess |
-| `ASSESS_SOURCE` | `manifest` | `live` to assess a cluster namespace via the CLI |
-| `FOUNDRY_PROJECT_ENDPOINT` | `deploy-assess-project` | Foundry project endpoint (CLI agents) |
-| `FOUNDRY_MODEL` | `gpt-4.1` | Model for the CLI agents |
-| `FOUNDRY_ENDPOINT` | account endpoint | Foundry endpoint (`assess` interpret mode) |
-| `FOUNDRY_DEPLOYMENT` | `gpt-4.1` | Model deployment (`assess` interpret mode) |
-
-The caller (managed identity in production, or your `az login` for local testing)
-needs **AKS RBAC Reader** on the cluster; AI modes additionally need **Cognitive
-Services OpenAI User** on the Foundry account.
-
-### Granting yourself access (local testing)
-
-When you run as your own identity rather than the collector managed identity, grant
-the read roles first and remove them when finished. Live (data-plane) reads need
-**AKS RBAC Reader**; `--interpret` additionally needs **Cognitive Services OpenAI
-User**. Azure RBAC for Kubernetes caches authorization decisions, so allow up to
-~5 minutes after granting before a live run succeeds.
-
-```shell
-PRINCIPAL=$(az ad signed-in-user show --query id -o tsv)
-CLUSTER_ID=$(az aks show -g deploy-assess-rg -n deploy-assess-aks --query id -o tsv)
-FOUNDRY_ID=$(az cognitiveservices account show -g deploy-assess-rg -n deploy-assess-foundry --query id -o tsv)
-
-# grant (read-only)
-az role assignment create --assignee "$PRINCIPAL" --role "Azure Kubernetes Service RBAC Reader" --scope "$CLUSTER_ID"
-az role assignment create --assignee "$PRINCIPAL" --role "Cognitive Services OpenAI User" --scope "$FOUNDRY_ID"
-
-# remove when finished
-az role assignment delete --assignee "$PRINCIPAL" --role "Azure Kubernetes Service RBAC Reader" --scope "$CLUSTER_ID"
-az role assignment delete --assignee "$PRINCIPAL" --role "Cognitive Services OpenAI User" --scope "$FOUNDRY_ID"
-```
-
-### Interactive investigation (CLI)
-
-The interactive terminal UI asks for your workload and reliability targets, runs the
-deterministic checks, then investigates with the Foundry agents and streams a
-scalability assessment you can ask follow-up questions about:
+Run the CLI:
 
 ```shell
 uv run will-it-scale
 ```
 
-By default it assesses the bundled manifest fixture. To assess a **live namespace**
-instead, use `--source live` with `--namespace` (or the `TARGET_*` variables):
+### Run Scale Street locally
 
 ```shell
-uv run will-it-scale --source live --namespace demo
+cd samples/scale_street
+uv sync
+uv run uvicorn scale_street.main:app --reload
 ```
 
-You can also switch source **while the CLI is running** with `/live <namespace>` and
-`/manifest` (see the commands below). Each investigation prints an `Assessing …` line
-naming exactly what it is evaluating — the manifest file or live cluster/namespace,
-plus the deployment names discovered there.
+Open <http://127.0.0.1:8000> and select **Ring the Opening Bell**.
 
-### Deterministic checks
+### Use Microsoft Agent Framework with Foundry
 
-Findings only, no agents. Add `--interpret` for the Foundry executive summary and
-prioritized risks, and `--source live --namespace <ns>` to assess a cluster:
+Scale Street uses `agent-framework-foundry`. The default local configuration
+uses a deterministic simulation so development and tests do not consume model
+quota. To use the Foundry-backed Hedgehog financial agent:
 
 ```shell
-uv run will-it-scale --checks                                  # findings, manifest fixture
-uv run will-it-scale --checks --interpret                      # + AI interpretation
-uv run will-it-scale --checks --source live --namespace demo   # live cluster namespace
+export SCALE_STREET_AGENT_MODE=foundry
+export FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>
+export FOUNDRY_MODEL=gpt-5-mini
+az login
+uv run uvicorn scale_street.main:app
 ```
 
-> Everything runs through the single `will-it-scale` command. Flags take precedence
-> over the equivalent `TARGET_*` / `ASSESS_SOURCE` environment variables.
+### Azure deployment
 
-### Try it against the sample fixture
+The deployment targets:
 
-`test_data/sample_service` is a deliberately-flawed order service (single replica,
-no CPU/memory limits, a pinned HPA, and no liveness probe). Assess the bundled
-manifest directly, or deploy it and assess the live namespace:
+- Subscription: supplied through `AZURE_SUBSCRIPTION_ID`
+- Resource group: `ScaleStreet_RG`
+- Region: `eastus2`
+
+It creates an Azure Container Registry, a deliberately single-node AKS
+cluster, Log Analytics, Application Insights, a Microsoft Foundry account and
+project, and a workload identity for the application. Model deployment is
+disabled by default because available models and quota vary by subscription.
 
 ```shell
-uv run will-it-scale --checks                                  # the manifest fixture
-kubectl apply -n demo -f test_data/sample_service/kubernetes/deployment.yaml
-uv run will-it-scale --checks --source live --namespace demo   # the deployed app
+cd samples/scale_street
+./scripts/deploy_azure.sh
 ```
 
-## Output
+The script builds the container in ACR, grants AKS pull access, applies the
+constrained Kubernetes deployment, and prints the public URL when available.
 
-Each run prints a summary and writes a timestamped JSON file to
-`findings/<cluster>/<timestamp>.json` containing the run summary, every finding
-(schema: `id`, `status`, `evidence`, `confidence`, `severity`, `remediation`), and
-the AI `interpretation` when enabled. Runs are diffed against the previous run to
-surface new regressions.
+After base provisioning, inspect the models available to the Foundry account
+and deploy an eligible model. Then set `FOUNDRY_MODEL` to that deployment name.
+The template retains an optional pinned model resource for environments where
+that exact model version remains available.
 
-## Testing
+### Hackathon fallback deployment
 
-Run the deterministic check suite. It needs no cluster or Azure access — the checks
-are exercised against constructed facts, so it is safe to run anywhere and in CI:
+Azure Container Instances temporarily hosted Foundry-backed and deterministic
+fallbacks while AKS provisioning was blocked. Both fallback container groups
+were removed on September 17, 2026 after the AKS deployment passed health,
+readiness, and Foundry validation.
+
+Retrieve an environment's endpoint instead of storing a live URL:
 
 ```shell
-uv run pytest
+fqdn="$(az container show \
+  --resource-group ScaleStreet_RG \
+  --name <container-group> \
+  --query ipAddress.fqdn \
+  --output tsv)"
+echo "http://${fqdn}:8000"
 ```
 
-## Interactive CLI reference
+The fallback templates use the `scalestreet-workload` user-assigned identity
+with the **Foundry User**, **Cognitive Services OpenAI User**, and **AcrPull**
+roles. ACR Premium is required only while the Azure Container Instances
+managed-identity image-pull fallback is deployed; the active AKS environment
+uses ACR Basic.
 
+The focused fallback templates are:
+
+- `infra/container-instance.bicep`
+- `infra/app-service.bicep`
+
+App Service was not used in the FDPO subscription because its B1 worker quota
+was zero. See `samples/scale_street/TODO.md` for the remaining AKS-only work.
+
+## Deterministic assessment engine (`will_it_scale`)
+
+Alongside the investigation agents, `src/will_it_scale` is a grounded, deterministic
+assessment engine and CLI. It reads real Kubernetes state, applies coded checks
+(replica floors, requests/limits, health probes, autoscaling, disruption budgets,
+and pod rollout health), and can have Azure AI Foundry interpret the findings. The
+model only ever consumes the grounded findings as evidence — it cannot reach the
+cluster or invent facts. Read-only by design.
+
+### Foundry configuration
+
+Defaults point at a personal Azure AI Foundry project for now
+(`deploy-assess-foundry` / `deploy-assess-project`, model `gpt-4.1`). This is
+temporary — repoint with `FOUNDRY_PROJECT_ENDPOINT` and `FOUNDRY_MODEL` when access
+to the target subscription is available (see `src/will_it_scale/config.py`).
+
+### Provision infrastructure (Terraform)
+
+```shell
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars   # subscription IDs, target, model
+terraform init && terraform apply
+```
+
+Creates the read-only collector managed identity and RBAC, an optional throwaway
+AKS cluster (`create_test_aks = true`), and the Foundry account/model. Tear it all
+down with `terraform destroy`.
+
+### Run it
+
+Everything runs through the single `will-it-scale` command; flags take precedence
+over the `TARGET_*` / `ASSESS_SOURCE` environment variables:
+
+```shell
+uv run will-it-scale                                           # interactive TUI (agents)
+uv run will-it-scale --checks                                  # deterministic findings only
+uv run will-it-scale --checks --interpret                      # + Foundry interpretation
+uv run will-it-scale --checks --source live --namespace demo   # assess a live namespace
+```
+
+The interactive TUI captures your workload requirements, runs the checks, then has
+the agents reason over the grounded findings. Switch source mid-session with
+`/live <namespace>` and `/manifest`; each run announces the source and the
+deployments discovered there.
+
+### Access for local runs
+
+Running as your own identity needs **AKS RBAC Reader** on the cluster; `--interpret`
+also needs **Cognitive Services OpenAI User** on the Foundry account. Azure RBAC for
+Kubernetes caches decisions, so allow ~5 minutes after granting.
+
+### Output and tests
+
+Each run writes `findings/<label>/<timestamp>.json` (schema: `id`, `status`,
+`evidence`, `confidence`, `severity`, `remediation`) and diffs against the previous
+run for regressions. Run the deterministic suite with `uv run pytest`; it needs no
+cluster or Azure access.
+
+## Repository structure
+
+```text
+.github/agents/                   Azure Scale Investigator custom agent
+agents/azure-scale-investigator/  Agent profile, checks, schemas, scripts, tests
+src/will_it_scale/                Investigation CLI + deterministic assessment engine
+infra/terraform/                  Read-only identity, RBAC, test AKS, Foundry (IaC)
+tests/                            Deterministic checks, manifest, CLI, TUI suites
+samples/scale_street/             Financial-services demo application
+  architecture/SAD.md             Target-state architecture
+  infra/                          Azure Bicep deployment
+  k8s/constrained/                Intentionally constrained deployment
+  k8s/improved/                   Recommended comparison deployment
+  load_tests/                     Opening-bell load generator
+  telemetry/                      Representative runtime evidence
+  TODO.md                         Remaining AKS deployment work
+```
+
+## Demo investigation
+
+The suggested intake concern is:
+
+> We are worried the portfolio store will not handle 10,000 customers during
+> the opening bell.
+
+The expected investigation finds that storage is not the first constraint.
+Source and telemetry evidence should instead identify synchronous Foundry
+calls, model throttling, a single application replica, a single AKS node, and
+in-process state. The SAD claims an asynchronous, horizontally scalable target
+state, allowing the architecture checker to report release drift.
+
+The final assessment should classify findings as:
+
+- **Confirmed:** evidence supports a concern raised during intake.
+- **Handled:** the concern is mitigated by the current implementation.
+- **New:** the investigation discovered a different material risk.
+- **Unknown:** available evidence is incomplete or contradictory.
 The inline terminal UI first asks for the workload and reliability targets to assess,
 then investigates the available configuration against those requirements. It streams a
 short assessment and accepts follow-up questions in the same conversation.
@@ -210,9 +327,6 @@ Commands and controls:
 - `/retry` restarts a failed or cancelled initial investigation.
 - `/exit` or `Ctrl+C` quits.
 - `Esc` cancels the active investigation or response.
-
-On startup the CLI prints a welcome listing these commands and the launch flags, plus
-the source it is currently assessing.
 
 ### Blender Easter Egg
 

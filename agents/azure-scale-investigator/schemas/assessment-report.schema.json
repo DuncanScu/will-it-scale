@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:will-it-scale:azure-assessment-report",
+  "title": "Azure Scale Investigator Assessment",
+  "type": "object",
+  "required": [
+    "metadata",
+    "tldr",
+    "verdict",
+    "confidence",
+    "application",
+    "azureScope",
+    "resources",
+    "bottleneckChains",
+    "findings",
+    "toolIssues",
+    "recommendations",
+    "unknowns"
+  ],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["generatedAt", "projectPath", "agent", "azureScope"],
+      "properties": {
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "projectPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "const": "azure-scale-investigator"
+        },
+        "azureScope": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "tldr": {
+      "type": "object",
+      "required": [
+        "summary",
+        "confidence",
+        "topFindings",
+        "topActions"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "topFindings": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          }
+        },
+        "topActions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verdict": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "application": {
+      "type": "object",
+      "required": ["summary", "workloads", "dependencies"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workloads": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "azureScope": {
+      "type": "object",
+      "required": ["tenant", "subscription", "resourceGroups", "evidence"],
+      "properties": {
+        "tenant": {
+          "type": ["string", "null"]
+        },
+        "subscription": {
+          "type": ["string", "null"]
+        },
+        "resourceGroups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "correlation",
+          "classification",
+          "deepInspection",
+          "rationale"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "correlation": {
+            "type": "string",
+            "enum": [
+              "declared-and-deployed",
+              "declared-not-found",
+              "deployed-not-declared",
+              "shared-dependency",
+              "unable-to-verify"
+            ]
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "direct-capacity",
+              "scale-path-dependency",
+              "operational-evidence",
+              "administrative"
+            ]
+          },
+          "deepInspection": {
+            "type": "boolean"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "bottleneckChains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "analysis"],
+        "properties": {
+          "path": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "string"
+            }
+          },
+          "analysis": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "priority",
+          "impact",
+          "evidence",
+          "resource",
+          "finding",
+          "whyItMatters",
+          "nextValidation"
+        ],
+        "properties": {
+          "priority": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "impact": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "evidence": {
+            "type": "string",
+            "enum": ["configured", "observed", "inferred", "unknown"]
+          },
+          "resource": {
+            "type": "string"
+          },
+          "finding": {
+            "type": "string"
+          },
+          "whyItMatters": {
+            "type": "string"
+          },
+          "nextValidation": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "toolIssues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "phase",
+          "tool",
+          "resource",
+          "errorCategory",
+          "message",
+          "handling",
+          "confidenceImpact"
+        ],
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "resource": {
+            "type": ["string", "null"]
+          },
+          "statusCode": {
+            "type": ["integer", "null"]
+          },
+          "errorCategory": {
+            "type": "string",
+            "enum": [
+              "validation",
+              "authentication",
+              "authorization",
+              "not-found",
+              "throttling",
+              "timeout",
+              "service",
+              "tool-contract",
+              "unknown"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "handling": {
+            "type": "string"
+          },
+          "confidenceImpact": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "priority",
+          "recommendation",
+          "evidence",
+          "reasoning",
+          "expectedScaleBenefit",
+          "confidence",
+          "confidenceRationale"
+        ],
+        "properties": {
+          "priority": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "reasoning": {
+            "type": "string"
+          },
+          "expectedScaleBenefit": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "confidenceRationale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

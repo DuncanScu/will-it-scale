@@ -1,0 +1,58 @@
+{
+  "scenario": "opening-bell",
+  "targetCustomers": 10000,
+  "sampleWindowMinutes": 5,
+  "observations": [
+    {
+      "minute": 0,
+      "requestsPerSecond": 4,
+      "p95LatencyMs": 310,
+      "http429": 0,
+      "cpuPercent": 24,
+      "memoryMb": 142,
+      "replicas": 1
+    },
+    {
+      "minute": 1,
+      "requestsPerSecond": 18,
+      "p95LatencyMs": 980,
+      "http429": 9,
+      "cpuPercent": 71,
+      "memoryMb": 205,
+      "replicas": 1
+    },
+    {
+      "minute": 2,
+      "requestsPerSecond": 23,
+      "p95LatencyMs": 2640,
+      "http429": 48,
+      "cpuPercent": 94,
+      "memoryMb": 288,
+      "replicas": 1
+    },
+    {
+      "minute": 3,
+      "requestsPerSecond": 22,
+      "p95LatencyMs": 4910,
+      "http429": 93,
+      "cpuPercent": 98,
+      "memoryMb": 356,
+      "replicas": 1
+    },
+    {
+      "minute": 4,
+      "requestsPerSecond": 16,
+      "p95LatencyMs": 7250,
+      "http429": 141,
+      "cpuPercent": 99,
+      "memoryMb": 381,
+      "replicas": 1
+    }
+  ],
+  "notableEvents": [
+    "Foundry model requests began returning HTTP 429 after concurrency exceeded 8.",
+    "Successful throughput plateaued while submitted work continued to increase.",
+    "The application remained at one replica because no HPA was configured.",
+    "Recommendation history grew continuously in pod memory."
+  ]
+}
